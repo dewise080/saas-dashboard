@@ -1,0 +1,158 @@
+{% extends "explorer/base.html" %}
+{% load explorer_tags i18n %}
+
+{% block sql_explorer_content %}
+
+<input type="hidden" id="queryIdGlobal" value="{{ query.id }}">
+
+<div class="container">
+    <div class="row">
+        <div id="query_area">
+            {% if query %}
+                {% query_favorite_button query.id is_favorite 'query_favorite_toggle query_favourite_detail'%}
+            {% endif %}
+            <h2>
+                {% if query %}
+                    {{ query.title }}
+                {% else %}
+                    {% translate "New Query" %}
+                {% endif %}
+            </h2>
+            {% if shared %}<small>&nbsp;&nbsp;shared</small>{% endif %}
+            {% if message %}
+                <div class="alert alert-info">{{ message }}</div>
+            {% endif %}
+            <div>
+                {% if query %}
+                    <form action="{% url 'query_detail' query.id %}" method="post" id="editor">{% csrf_token %}
+                {% else %}
+                    <form action="{% url 'query_create' %}" method="post" id="editor">{% csrf_token %}
+                {% endif %}
+                {% if error %}
+                    <div class="alert alert-danger db-error">{{ error|escape }}</div>
+                {% endif %}
+                {{ form.non_field_errors }}
+                <div class="my-3 form-floating">
+                    <input class="form-control" id="id_title" maxlength="255" name="title" type="text" {% if not can_change %}disabled{% endif %} value="{{ form.title.value|default_if_none:"" }}" />
+                    <label for="id_title" class="form-label">{% translate "Title" %}</label>
+                    {% if form.title.errors %}{% for error in form.title.errors %}
+                        <div class="alert alert-danger">{{ error|escape }}</div>
+                    {% endfor %}{% endif %}
+                </div>
+                {% if can_change %}
+                    <div class="mb-3 form-floating">
+                        {{ form.database_connection }}
+                        <label for="id_database_connection" class="form-label">{% translate "Connection" %}</label>
+                    </div>
+                {% else %}
+                    {# still need to submit the connection, just hide the UI element #}
+                    <div class="d-none">
+                      {{ form.database_connection }}
+                    </div>
+                {% endif %}
+                <div class="mb-3 form-floating">
+                    <textarea
+                        id="id_description" class="form-control" cols="40" name="description"
+                        {% if not can_change %}disabled{% endif %} rows="2"
+                    >{{ form.description.value|default_if_none:"" }}</textarea>
+                    <label for="id_description" class="form-label">
+                        {% translate "Description"%}
+                    </label>
+                    {% if form.description.errors %}
+                        <div class="alert alert-danger">{{ form.description.errors }}</div>
+                    {% endif %}
+                </div>
+                {% if form.sql.errors %}
+                    {% for error in form.sql.errors %}
+                        <div class="alert alert-danger">{{ error|escape }}</div>
+                    {% endfor %}
+                {% endif %}
+                <div class ="accordion accordion-flush" id="sql_accordion">
+                    <div class="accordion-item">
+                        <div class="accordion-header" id="sql_accordion_header">
+                            <button class="accordion-button bg-light" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseOne" aria-expanded="false" aria-controls="flush-collapseOne">
+                                <label for="id_sql">SQL</label>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="flush-collapseOne" class="accordion-collapse collapse{% if show_sql_by_default or not form.sql.value %} show{% endif %}" aria-labelledby="sql_accordion_header" data-bs-parent="#sql_accordion">
+                        <div>
+                            <div class="row" id="sql_editor_container">
+                                <textarea
+                                    class="form-control" {% if not can_change %} disabled {% endif %} cols="40" id="id_sql"
+                                    name="sql" rows="20">{{ form.sql.value|default_if_none:"" }}</textarea>
+                                <div id="schema_tooltip" class="d-none"></div>
+                            </div>
+                            {% if params %}
+                                <div class="row">
+                                    {% include 'explorer/params.html' %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 text-center">
+                    {% if query %}
+                        <div class="position-relative float-end">
+                            <small>
+                                <span class="pe-3">
+                                    {% if query and can_change and assistant_enabled %}{{ form.few_shot }} {% translate "Assistant Example" %}{% endif %}
+                                    <i class="bi-question-circle" style="cursor: pointer;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Queries marked as examples will be sent, when relevant, to the AI Assistant as few-shot examples of how certain tables are used."></i>
+                                </span>
+                                <a href="#" title="Open in playground" id="playground_button">
+                                    <i class="bi-arrow-up-right-square"></i>
+                                </a>
+                                <a href="#" title="Format code (Cmd/ctrl+shift+f)" id="format_button">
+                                    <i class="bi-list-nested"></i>
+                                </a>
+                            </small>
+                        </div>
+                    {% endif %}
+                    <div class="btn-group" role="group">
+                        {% if can_change %}
+                            <button id="save_button" type="submit" class="btn btn-primary">
+                                {% translate "Save & Run" %}
+                            </button>
+                            <button class="btn btn-outline-primary" id="save_only_button">
+                                {% translate "Save Only" %}
+                            </button>
+                            {% export_buttons query %}
+                            <button type="button" class="btn btn-outline-primary" id="show_schema_button">
+                                {% translate "Show Schema" %}
+                            </button>
+                            <button type="button" class="btn btn-outline-primary" id="hide_schema_button" style="display: none;">
+                                {% translate "Hide Schema" %}
+                            </button>
+                        {% else %}
+                            <button id="refresh_button" type="button" class="btn btn-outline-primary">{% translate "Refresh" %}</button>
+                            {% export_buttons query %}
+                        {% endif %}
+                    </div>
+                </div>
+                {% if assistant_enabled %}
+                    {% include 'explorer/assistant.html' %}
+                {% endif %}
+                </form>
+            </div>
+        </div>
+        <div id="schema" style="display: none;">
+            <iframe src="" height="828px" frameBorder="0" id="schema_frame"></iframe>
+        </div>
+    </div>
+</div>
+
+{% include 'explorer/preview_pane.html' %}
+
+<div class="container mt-1 text-end small">
+    {% if query.avg_duration %}
+        {% blocktranslate trimmed with avg_duration_display=query.avg_duration_display cuser=query.created_by_user created=form.created_at_time %}
+            Avg. execution: {{ avg_duration_display }}ms. Query created by {{ cuser }} on {{ created }}.
+        {% endblocktranslate %}
+        {% if query %}<a href="{% url 'explorer_logs' %}?query_id={{ query.id }}"> {% translate "History" %}</a>{% endif %}
+    {% endif %}
+</div>
+<div class="container mt-1 text-end small">
+    {% if query and can_change and tasks_enabled %}{{ form.snapshot }} {% translate "Snapshot" %}{% endif %}
+</div>
+{% endblock %}

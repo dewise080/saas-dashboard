@@ -1,0 +1,42 @@
+/* Scoped styling for the playbooks React Flow embed */
+#rf-embed-playbooks,
+#rf-embed-appointments {
+  --dot: rgba(148, 163, 184, 0.16);
+  --edge: #22d3ee;
+}
+#rf-embed-playbooks .react-flow__background.dots circle,
+#rf-embed-appointments .react-flow__background.dots circle {
+  fill: var(--dot);
+}
+#rf-embed-playbooks .react-flow__panel.react-flow__controls button,
+#rf-embed-appointments .react-flow__panel.react-flow__controls button {
+  background: rgba(30, 41, 59, 0.92);
+  border-color: rgba(71, 85, 105, 0.6);
+  color: #e5e7eb;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+#rf-embed-playbooks .step,
+#rf-embed-appointments .step {
+  position: relative;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 2px solid rgba(2, 132, 199, 0.35);
+  background: linear-gradient(
+    135deg,
+    rgba(2, 132, 199, 0.25),
+    rgba(8, 47, 73, 0.45)
+  );
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+#rf-embed-playbooks .step .title,
+#rf-embed-appointments .step .title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+#rf-embed-playbooks .step .sub,
+#rf-embed-appointments .step .sub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #cbd5e1cc;
+}

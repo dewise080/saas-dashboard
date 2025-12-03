@@ -1,0 +1,64 @@
+{% load i18n %}
+<div class ="accordion accordion-flush mt-4" id="assistant_accordion">
+    <div class="accordion-item">
+        <div class="accordion-header" id="assistant_accordion_header">
+            <button class="accordion-button bg-light collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#assistant_collapse" aria-expanded="false" aria-controls="assistant_collapse">
+                <label for="id_assistant_input">SQL Assistant</label>
+            </button>
+        </div>
+    </div>
+    <div id="assistant_collapse" class="accordion-collapse collapse" aria-labelledby="assistant_accordion_header" data-bs-parent="#assistant_accordion">
+        <div class="accordion-body card">
+            <div id="response_block" class="position-relative d-none">
+                <div class="mb-3 p-2 rounded-2 border bg-light">
+                    <div id="assistant_response"></div>
+                    <p class="spinner-border text-primary d-none" id="assistant_spinner" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </p>
+                </div>
+            </div>
+            <div class="row assistant_input_parent">
+                <div class="col-8" id="assistant_input_wrapper">
+                    <textarea
+                        class="form-control" id="id_assistant_input"
+                        name="sql_assistant" rows="5" placeholder="What do you need help with?"></textarea>
+                    <label for="id_assistant_input" class="form-label d-none" id="id_assistant_input_label">Assistant prompt</label>
+                    <div id="id_error_help_message" class="d-none text-secondary small">
+                        "Ask Assistant" to try and automatically fix the issue. The assistant is already aware of error messages & context.
+                    </div>
+                </div>
+                <div id="additional_table_container" class="col-3" style="width: 31% !important">
+                    <div id="table-list"></div>
+                </div>
+            </div>
+            <div class="assistant-icons" style="">
+                <div>
+                    <i class="bi-check-all" id="select_all_button" style="cursor: pointer;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Add all"></i>
+                </div>
+                <div>
+                    <i class="bi-trash" id="deselect_all_button" style="cursor: pointer;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Remove all"></i>
+                </div>
+                <div>
+                    <i class="bi-repeat" id="refresh_tables_button" style="cursor: pointer;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Refresh autodetect"></i>
+                </div>
+                <div>
+                    <i class="bi-card-list" id="assistant_history" style="cursor: pointer;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="History"></i>
+                </div>
+                <div>
+                    <i class="bi-question-circle" style="cursor: pointer;"
+                    data-bs-toggle="tooltip" data-bs-placement="top"
+                    data-bs-title="SQL Assistant builds a prompt with your query, your request, and the tables (schema, sample data, and annotations) referenced here."></i>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 text-center">
+                    <div class="btn-group mt-3" role="group">
+                        <button type="button" class="btn btn-outline-primary" id="ask_assistant_btn">Ask Assistant</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+

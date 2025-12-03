@@ -1,0 +1,50 @@
+{% load i18n static %}
+{% load vite %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% translate "SQL Explorer" %}{% if query %} - {{ query.title }}{% elif title %} - {{ title }}{% endif %}</title>
+    {% block style %}
+        {% vite_asset 'scss/styles.scss' %}
+    {% endblock style %}
+</head>
+
+<body class="m-3">
+  <h2>
+      {% if query %}
+          {{ query.title }}{% if shared %}<small>&nbsp;&nbsp;shared</small>{% endif %}
+      {% else %}
+          {% translate "New Query" %}
+      {% endif %}
+  </h2>
+  <table class="table table-striped">
+      <thead>
+          <tr>
+              {% for h in headers %}
+                  <th>{{ h }}</th>
+              {% endfor %}
+          </tr>
+      </thead>
+      <tbody class="list">
+          {% if data %}
+              {% for row in data %}
+                  <tr class="data-row">
+                      {% for i in row %}
+                          {% if unsafe_rendering %}
+                              <td>{% autoescape off %}{{ i }}{% endautoescape %}</td>
+                          {% else %}
+                              <td>{{ i }}</td>
+                          {% endif %}
+                      {% endfor %}
+                  </tr>
+              {% endfor %}
+          {% else %}
+              <tr class="text-center"><td colspan="{{ headers|length }}">{% translate "Empty Resultset" %}</td></tr>
+          {% endif %}
+      </tbody>
+  </table>
+</body>
+</html>

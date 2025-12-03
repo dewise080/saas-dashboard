@@ -1,0 +1,453 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+
+{% block title %}WhatsApp Dashboard - {{ instance.instance_name }}{% endblock title %}
+
+{% block content %}
+<div class="pc-container">
+  <div class="pc-content">
+    <!-- Page Header -->
+    <div class="page-header">
+      <div class="page-block">
+        <div class="row align-items-center">
+          <div class="col-md-12">
+            <div class="page-header-title">
+              <h5 class="mb-0">
+                <i class="ti ti-brand-whatsapp text-success me-2"></i>
+                WhatsApp Dashboard
+              </h5>
+            </div>
+          </div>
+          <div class="col-md-12">
+            <ul class="breadcrumb mb-0">
+              <li class="breadcrumb-item"><a href="{% url 'apps.pages:index' %}">Home</a></li>
+              <li class="breadcrumb-item"><a href="{% url 'apps.pages:credentials' %}">Credentials</a></li>
+              <li class="breadcrumb-item" aria-current="page">{{ instance.instance_name }}</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert alert-{% if message.tags %}{{ message.tags }}{% else %}info{% endif %} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    <!-- Instance Profile Card -->
+    <div class="row">
+      <div class="col-lg-4">
+        <div class="card">
+          <div class="card-body text-center">
+            <!-- Profile Picture -->
+            {% if details.profilePicUrl %}
+            <img src="{{ details.profilePicUrl }}" alt="Profile" class="rounded-circle mb-3" width="100" height="100">
+            {% else %}
+            <div class="rounded-circle bg-success bg-opacity-10 d-inline-flex align-items-center justify-content-center mb-3" style="width: 100px; height: 100px;">
+              <i class="ti ti-brand-whatsapp text-success" style="font-size: 48px;"></i>
+            </div>
+            {% endif %}
+            
+            <!-- Profile Name -->
+            <h4 class="mb-1">{{ details.profileName|default:instance.instance_name }}</h4>
+            <p class="text-muted mb-2">{{ details.ownerJid|default:instance.whatsapp_number }}</p>
+            
+            <!-- Status Badge -->
+            <div class="mb-3">
+              {% if is_connected %}
+              <span class="badge bg-success fs-6">
+                <i class="ti ti-check me-1"></i> Connected
+              </span>
+              {% elif details.connectionStatus == 'connecting' %}
+              <span class="badge bg-warning fs-6">
+                <i class="ti ti-loader me-1"></i> Connecting
+              </span>
+              {% else %}
+              <span class="badge bg-secondary fs-6">
+                <i class="ti ti-wifi-off me-1"></i> Disconnected
+              </span>
+              {% endif %}
+            </div>
+            
+            <!-- Instance Details -->
+            <div class="text-start border-top pt-3 mt-3">
+              <div class="row mb-2">
+                <div class="col-5 text-muted">Instance ID:</div>
+                <div class="col-7"><code class="small">{{ details.id|default:"-"|truncatechars:20 }}</code></div>
+              </div>
+              <div class="row mb-2">
+                <div class="col-5 text-muted">Instance Name:</div>
+                <div class="col-7 fw-bold">{{ details.name|default:instance.instance_name }}</div>
+              </div>
+              <div class="row mb-2">
+                <div class="col-5 text-muted">Number:</div>
+                <div class="col-7">{{ details.number|default:instance.whatsapp_number }}</div>
+              </div>
+              <div class="row mb-2">
+                <div class="col-5 text-muted">Integration:</div>
+                <div class="col-7"><span class="badge bg-info">{{ details.integration|default:"BAILEYS" }}</span></div>
+              </div>
+              <div class="row mb-2">
+                <div class="col-5 text-muted">Created:</div>
+                <div class="col-7 small">{{ details.createdAt|default:instance.created_at }}</div>
+              </div>
+              <div class="row">
+                <div class="col-5 text-muted">Last Update:</div>
+                <div class="col-7 small">{{ details.updatedAt|default:"-" }}</div>
+              </div>
+            </div>
+            
+            <!-- Actions -->
+            <div class="border-top pt-3 mt-3">
+              {% if not is_connected %}
+              <a href="{% url 'apps.pages:whatsapp_connect' instance.instance_name %}" class="btn btn-success w-100 mb-2">
+                <i class="ti ti-qrcode me-1"></i> Connect Now
+              </a>
+              {% endif %}
+              <a href="{% url 'apps.pages:credentials' %}" class="btn btn-outline-secondary w-100">
+                <i class="ti ti-arrow-left me-1"></i> Back to Credentials
+              </a>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Instance Token -->
+        {% if details.token %}
+        <div class="card">
+          <div class="card-header">
+            <h6 class="mb-0"><i class="ti ti-key me-2"></i>API Token</h6>
+          </div>
+          <div class="card-body">
+            <div class="input-group">
+              <input type="password" class="form-control form-control-sm" id="api-token" value="{{ details.token }}" readonly>
+              <button class="btn btn-outline-secondary btn-sm" type="button" onclick="toggleToken()">
+                <i class="ti ti-eye" id="token-icon"></i>
+              </button>
+              <button class="btn btn-outline-primary btn-sm" type="button" onclick="copyToken()">
+                <i class="ti ti-copy"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+      
+      <!-- Stats Cards -->
+      <div class="col-lg-8">
+        <div class="row">
+          <!-- Contacts -->
+          <div class="col-sm-6 col-lg-3">
+            <div class="card bg-primary text-white">
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <div class="flex-grow-1">
+                    <h3 class="mb-1">{{ stats.contacts|default:0 }}</h3>
+                    <p class="mb-0 opacity-75">Contacts</p>
+                  </div>
+                  <div class="flex-shrink-0">
+                    <i class="ti ti-users opacity-50" style="font-size: 48px;"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Chats -->
+          <div class="col-sm-6 col-lg-3">
+            <div class="card bg-success text-white">
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <div class="flex-grow-1">
+                    <h3 class="mb-1">{{ stats.chats|default:0 }}</h3>
+                    <p class="mb-0 opacity-75">Chats</p>
+                  </div>
+                  <div class="flex-shrink-0">
+                    <i class="ti ti-messages opacity-50" style="font-size: 48px;"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Messages -->
+          <div class="col-sm-6 col-lg-3">
+            <div class="card bg-info text-white">
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <div class="flex-grow-1">
+                    <h3 class="mb-1">{{ stats.messages|default:0 }}</h3>
+                    <p class="mb-0 opacity-75">Messages</p>
+                  </div>
+                  <div class="flex-shrink-0">
+                    <i class="ti ti-message opacity-50" style="font-size: 48px;"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Unread -->
+          <div class="col-sm-6 col-lg-3">
+            <div class="card bg-warning text-dark">
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <div class="flex-grow-1">
+                    <h3 class="mb-1">{{ stats.unread|default:0 }}</h3>
+                    <p class="mb-0 opacity-75">Unread</p>
+                  </div>
+                  <div class="flex-shrink-0">
+                    <i class="ti ti-bell opacity-50" style="font-size: 48px;"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Settings Card -->
+        <div class="card">
+          <div class="card-header">
+            <h6 class="mb-0"><i class="ti ti-settings me-2"></i>Instance Settings</h6>
+          </div>
+          <div class="card-body">
+            {% if settings %}
+            <div class="row">
+              <div class="col-md-6">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span>Reject Calls</span>
+                  <span class="badge bg-{% if settings.rejectCall %}success{% else %}secondary{% endif %}">
+                    {% if settings.rejectCall %}ON{% else %}OFF{% endif %}
+                  </span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span>Always Online</span>
+                  <span class="badge bg-{% if settings.alwaysOnline %}success{% else %}secondary{% endif %}">
+                    {% if settings.alwaysOnline %}ON{% else %}OFF{% endif %}
+                  </span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span>Read Messages</span>
+                  <span class="badge bg-{% if settings.readMessages %}success{% else %}secondary{% endif %}">
+                    {% if settings.readMessages %}ON{% else %}OFF{% endif %}
+                  </span>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span>Read Status</span>
+                  <span class="badge bg-{% if settings.readStatus %}success{% else %}secondary{% endif %}">
+                    {% if settings.readStatus %}ON{% else %}OFF{% endif %}
+                  </span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span>Ignore Groups</span>
+                  <span class="badge bg-{% if settings.groupsIgnore %}success{% else %}secondary{% endif %}">
+                    {% if settings.groupsIgnore %}ON{% else %}OFF{% endif %}
+                  </span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span>Sync Full History</span>
+                  <span class="badge bg-{% if settings.syncFullHistory %}success{% else %}secondary{% endif %}">
+                    {% if settings.syncFullHistory %}ON{% else %}OFF{% endif %}
+                  </span>
+                </div>
+              </div>
+            </div>
+            {% if settings.msgCall %}
+            <div class="mt-3 pt-3 border-top">
+              <small class="text-muted">Call Rejection Message:</small>
+              <p class="mb-0 fst-italic">"{{ settings.msgCall }}"</p>
+            </div>
+            {% endif %}
+            {% else %}
+            <p class="text-muted mb-0">No settings configured.</p>
+            {% endif %}
+          </div>
+        </div>
+        
+        <!-- Webhook Card -->
+        <div class="card">
+          <div class="card-header">
+            <h6 class="mb-0"><i class="ti ti-webhook me-2"></i>Webhook Configuration</h6>
+          </div>
+          <div class="card-body">
+            {% if webhook %}
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <span>Status</span>
+              <span class="badge bg-{% if webhook.enabled %}success{% else %}secondary{% endif %}">
+                {% if webhook.enabled %}ENABLED{% else %}DISABLED{% endif %}
+              </span>
+            </div>
+            {% if webhook.url %}
+            <div class="mb-3">
+              <small class="text-muted d-block">Webhook URL:</small>
+              <code class="small">{{ webhook.url }}</code>
+            </div>
+            {% endif %}
+            {% if webhook.events %}
+            <div>
+              <small class="text-muted d-block mb-2">Subscribed Events:</small>
+              <div class="d-flex flex-wrap gap-1">
+                {% for event in webhook.events %}
+                <span class="badge bg-light text-dark">{{ event }}</span>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+            {% else %}
+            <p class="text-muted mb-0">No webhook configured.</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Recent Chats & Contacts -->
+    <div class="row">
+      <!-- Recent Chats -->
+      <div class="col-lg-6">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="ti ti-messages me-2"></i>Recent Chats</h6>
+            <span class="badge bg-primary">{{ chats|length }}</span>
+          </div>
+          <div class="card-body p-0">
+            {% if chats %}
+            <div class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">
+              {% for chat in chats %}
+              <div class="list-group-item">
+                <div class="d-flex justify-content-between align-items-center">
+                  <div>
+                    <h6 class="mb-0">{{ chat.name|default:chat.remoteJid|truncatechars:30 }}</h6>
+                    <small class="text-muted">{{ chat.remoteJid|truncatechars:35 }}</small>
+                  </div>
+                  <div class="text-end">
+                    {% if chat.unreadMessages > 0 %}
+                    <span class="badge bg-danger rounded-pill">{{ chat.unreadMessages }}</span>
+                    {% endif %}
+                    <small class="text-muted d-block">{{ chat.updatedAt|timesince }} ago</small>
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="p-4 text-center text-muted">
+              <i class="ti ti-messages-off" style="font-size: 48px;"></i>
+              <p class="mb-0 mt-2">No chats found.</p>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      
+      <!-- Contacts -->
+      <div class="col-lg-6">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="ti ti-users me-2"></i>Recent Contacts</h6>
+            <span class="badge bg-primary">{{ stats.contacts|default:0 }}</span>
+          </div>
+          <div class="card-body p-0">
+            {% if contacts %}
+            <div class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">
+              {% for contact in contacts %}
+              <div class="list-group-item">
+                <div class="d-flex align-items-center">
+                  {% if contact.profilePicUrl %}
+                  <img src="{{ contact.profilePicUrl }}" alt="" class="rounded-circle me-3" width="40" height="40">
+                  {% else %}
+                  <div class="rounded-circle bg-secondary bg-opacity-10 d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                    <i class="ti ti-user text-secondary"></i>
+                  </div>
+                  {% endif %}
+                  <div>
+                    <h6 class="mb-0">{{ contact.pushName|default:"Unknown" }}</h6>
+                    <small class="text-muted">{{ contact.remoteJid|truncatechars:30 }}</small>
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="p-4 text-center text-muted">
+              <i class="ti ti-users-minus" style="font-size: 48px;"></i>
+              <p class="mb-0 mt-2">No contacts synced yet.</p>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Labels -->
+    {% if labels %}
+    <div class="row">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header">
+            <h6 class="mb-0"><i class="ti ti-tags me-2"></i>Labels</h6>
+          </div>
+          <div class="card-body">
+            <div class="d-flex flex-wrap gap-2">
+              {% for label in labels %}
+              <span class="badge" style="background-color: {{ label.color|default:'#6c757d' }}; font-size: 0.9rem;">
+                {{ label.name }}
+              </span>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    
+  </div>
+</div>
+{% endblock content %}
+
+{% block javascripts %}
+<script>
+function toggleToken() {
+  const input = document.getElementById('api-token');
+  const icon = document.getElementById('token-icon');
+  if (input.type === 'password') {
+    input.type = 'text';
+    icon.className = 'ti ti-eye-off';
+  } else {
+    input.type = 'password';
+    icon.className = 'ti ti-eye';
+  }
+}
+
+function copyToken() {
+  const input = document.getElementById('api-token');
+  input.select();
+  document.execCommand('copy');
+  
+  // Show feedback
+  const btn = event.target.closest('button');
+  const originalHTML = btn.innerHTML;
+  btn.innerHTML = '<i class="ti ti-check"></i>';
+  setTimeout(() => {
+    btn.innerHTML = originalHTML;
+  }, 2000);
+}
+
+// Auto-refresh status every 30 seconds
+const statusUrl = "{% url 'apps.pages:whatsapp_dashboard_api' instance.instance_name %}";
+setInterval(() => {
+  fetch(statusUrl)
+    .then(response => response.json())
+    .then(data => {
+      console.log('Dashboard refresh:', data);
+      // Could update stats here without page reload
+    })
+    .catch(error => console.error('Refresh error:', error));
+}, 30000);
+</script>
+{% endblock javascripts %}

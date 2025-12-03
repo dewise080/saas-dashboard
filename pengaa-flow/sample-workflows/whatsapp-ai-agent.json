@@ -1,0 +1,98 @@
+{
+  "name": "WhatsApp AI Agent",
+  "nodes": [
+    {
+      "id": "trigger-1",
+      "name": "WhatsApp Trigger",
+      "type": "@n8n/n8n-nodes-langchain.webhookTrigger",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp"
+      },
+      "credentials": {}
+    },
+    {
+      "id": "agent-1",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1,
+      "position": [400, 300],
+      "parameters": {
+        "systemMessage": "You are a helpful assistant that responds to WhatsApp messages."
+      },
+      "credentials": {}
+    },
+    {
+      "id": "openai-1",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [400, 500],
+      "parameters": {
+        "model": "gpt-4o-mini"
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": ""
+        }
+      }
+    },
+    {
+      "id": "evolution-1",
+      "name": "Send WhatsApp Message",
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [700, 300],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendText"
+      },
+      "credentials": {
+        "evolutionApi": {
+          "id": "",
+          "name": ""
+        }
+      }
+    }
+  ],
+  "connections": {
+    "trigger-1": {
+      "main": [
+        [
+          {
+            "node": "agent-1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agent-1": {
+      "main": [
+        [
+          {
+            "node": "evolution-1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "openai-1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "agent-1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}

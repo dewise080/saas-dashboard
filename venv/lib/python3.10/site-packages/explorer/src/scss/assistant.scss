@@ -1,0 +1,32 @@
+#assistant_description_label {
+    white-space: pre-wrap;
+}
+
+#assistant_response pre {
+    position: relative;
+    background: antiquewhite;
+}
+
+#assistant_response .copy-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    cursor: pointer;
+}
+
+#assistant_input_parent {
+    max-height: 120px;
+    overflow: hidden;
+}
+
+.assistant-icons {
+    width: 1rem;
+    position: absolute;
+    right: .75rem;
+}
+
+#table-list {
+    .choices__inner {
+        min-height: 7rem !important;
+    }
+}

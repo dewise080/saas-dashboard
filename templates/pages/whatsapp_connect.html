@@ -1,0 +1,297 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+
+{% block title %}Connect WhatsApp - {{ instance.instance_name }}{% endblock title %}
+
+{% block content %}
+<div class="pc-container">
+  <div class="pc-content">
+    <div class="page-header">
+      <div class="page-block">
+        <div class="row align-items-center">
+          <div class="col-md-12">
+            <div class="page-header-title">
+              <h5 class="mb-0">Connect WhatsApp Instance</h5>
+            </div>
+          </div>
+          <div class="col-md-12">
+            <ul class="breadcrumb mb-0">
+              <li class="breadcrumb-item"><a href="{% url 'apps.pages:index' %}">Home</a></li>
+              <li class="breadcrumb-item"><a href="{% url 'apps.pages:credentials' %}">Credentials</a></li>
+              <li class="breadcrumb-item" aria-current="page">Connect</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert alert-{% if message.tags %}{{ message.tags }}{% else %}info{% endif %} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    <div class="row justify-content-center">
+      <div class="col-lg-6">
+        <div class="card">
+          <div class="card-header text-center">
+            <h5 class="mb-0">
+              <i class="ti ti-brand-whatsapp text-success me-2"></i>
+              {{ instance.instance_name }}
+            </h5>
+            <p class="text-muted mb-0 mt-2">{{ instance.whatsapp_number }}</p>
+            
+            <!-- LIVE STATUS BADGE -->
+            <div class="mt-3">
+              <span id="status-badge" class="badge bg-{% if live_status.connectionStatus == 'open' %}success{% elif live_status.connectionStatus == 'connecting' %}warning{% else %}secondary{% endif %} fs-6">
+                <i class="ti ti-{% if live_status.connectionStatus == 'open' %}check{% elif live_status.connectionStatus == 'connecting' %}loader{% else %}wifi-off{% endif %} me-1"></i>
+                <span id="status-text">{% if live_status.connectionStatus %}{{ live_status.connectionStatus }}{% else %}checking...{% endif %}</span>
+              </span>
+            </div>
+            
+            <!-- Profile info when connected -->
+            <div id="profile-info" class="mt-3 {% if not live_status.connectionStatus == 'open' %}d-none{% endif %}">
+              {% if live_status.profilePicUrl %}
+              <img src="{{ live_status.profilePicUrl }}" alt="Profile" class="rounded-circle" width="60" height="60">
+              {% endif %}
+              {% if live_status.profileName %}
+              <p class="mb-0 mt-2 fw-bold">{{ live_status.profileName }}</p>
+              {% endif %}
+              {% if live_status.ownerJid %}
+              <small class="text-muted">{{ live_status.ownerJid }}</small>
+              {% endif %}
+            </div>
+          </div>
+          
+          <div class="card-body text-center">
+            <!-- Connected state -->
+            <div id="connected-container" class="py-4 {% if not live_status.connectionStatus == 'open' %}d-none{% endif %}">
+              <i class="ti ti-circle-check text-success" style="font-size: 64px;"></i>
+              <h4 class="mt-3 text-success">Connected!</h4>
+              <p class="text-muted">Your WhatsApp is now linked to this instance.</p>
+              <a href="{% url 'apps.pages:credentials' %}" class="btn btn-success mt-3">
+                <i class="ti ti-arrow-left me-1"></i> Back to Credentials
+              </a>
+            </div>
+            
+            <!-- QR Container - hide if already connected -->
+            <div id="qr-container" class="{% if not qr_data or live_status.connectionStatus == 'open' %}d-none{% endif %}">
+              <p class="text-muted mb-3">Scan this QR code with WhatsApp on your phone</p>
+              <div class="qr-code-wrapper mb-3">
+                <img id="qr-image" src="{% if qr_data %}{{ qr_data.qr_base64 }}{% endif %}" alt="QR Code" class="img-fluid" style="max-width: 280px;">
+              </div>
+              <div id="pairing-code-container" class="{% if not qr_data.pairing_code %}d-none{% endif %}">
+                <p class="text-muted mb-2">Or use this pairing code:</p>
+                <h3 id="pairing-code" class="text-primary font-monospace">{% if qr_data.pairing_code %}{{ qr_data.pairing_code }}{% endif %}</h3>
+              </div>
+              <button id="refresh-qr" class="btn btn-outline-secondary mt-3">
+                <i class="ti ti-refresh me-1"></i> Refresh QR Code
+              </button>
+            </div>
+            
+            <!-- Loading state -->
+            <div id="qr-loading" class="py-5 d-none">
+              <div class="spinner-border text-success" role="status">
+                <span class="visually-hidden">Loading...</span>
+              </div>
+              <p class="mt-3 text-muted">Loading QR code...</p>
+            </div>
+            
+            <!-- Error state -->
+            <div id="qr-error" class="d-none py-5">
+              <i class="ti ti-alert-circle text-danger" style="font-size: 48px;"></i>
+              <p class="mt-3 text-danger" id="error-message">Failed to load QR code</p>
+              <button id="retry-qr" class="btn btn-outline-primary mt-2">
+                <i class="ti ti-refresh me-1"></i> Retry
+              </button>
+            </div>
+            
+            <!-- No QR data available - need to refresh -->
+            {% if not qr_data and live_status.connectionStatus != 'open' %}
+            <div id="no-qr-data" class="py-5">
+              <i class="ti ti-qrcode text-muted" style="font-size: 48px;"></i>
+              <p class="mt-3 text-muted">QR code expired or not available</p>
+              <button id="load-qr" class="btn btn-success mt-2">
+                <i class="ti ti-refresh me-1"></i> Load QR Code
+              </button>
+            </div>
+            {% endif %}
+            
+          </div>
+          <div class="card-footer">
+            <div class="d-flex justify-content-between align-items-center">
+              <a href="{% url 'apps.pages:credentials' %}" class="btn btn-link text-muted">
+                <i class="ti ti-arrow-left me-1"></i> Back to Credentials
+              </a>
+              <small class="text-muted" id="auto-refresh-notice">
+                <i class="ti ti-refresh-dot me-1"></i> Auto-checking status...
+              </small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %}
+
+{% block javascripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const instanceName = "{{ instance.instance_name }}";
+    const refreshUrl = "{% url 'apps.pages:whatsapp_refresh_qr' instance.instance_name %}";
+    const statusUrl = "{% url 'apps.pages:whatsapp_status_api' instance.instance_name %}";
+    const credentialsUrl = "{% url 'apps.pages:credentials' %}";
+    
+    const loadingEl = document.getElementById('qr-loading');
+    const containerEl = document.getElementById('qr-container');
+    const errorEl = document.getElementById('qr-error');
+    const noQrDataEl = document.getElementById('no-qr-data');
+    const connectedEl = document.getElementById('connected-container');
+    const qrImageEl = document.getElementById('qr-image');
+    const pairingCodeEl = document.getElementById('pairing-code');
+    const pairingCodeContainerEl = document.getElementById('pairing-code-container');
+    const errorMessageEl = document.getElementById('error-message');
+    const statusBadge = document.getElementById('status-badge');
+    const statusText = document.getElementById('status-text');
+    const profileInfo = document.getElementById('profile-info');
+    
+    let statusCheckInterval;
+    
+    function showState(state) {
+        if (loadingEl) loadingEl.classList.add('d-none');
+        if (containerEl) containerEl.classList.add('d-none');
+        if (errorEl) errorEl.classList.add('d-none');
+        if (noQrDataEl) noQrDataEl.classList.add('d-none');
+        if (connectedEl) connectedEl.classList.add('d-none');
+        
+        if (state === 'loading' && loadingEl) loadingEl.classList.remove('d-none');
+        else if (state === 'qr' && containerEl) containerEl.classList.remove('d-none');
+        else if (state === 'error' && errorEl) errorEl.classList.remove('d-none');
+        else if (state === 'connected' && connectedEl) connectedEl.classList.remove('d-none');
+    }
+    
+    function updateStatusBadge(status, profileData) {
+        if (!statusBadge) return;
+        
+        // Update badge color and text
+        statusBadge.className = 'badge fs-6 ';
+        let iconClass = 'wifi-off';
+        
+        if (status === 'open') {
+            statusBadge.classList.add('bg-success');
+            statusText.textContent = 'Connected';
+            iconClass = 'check';
+        } else if (status === 'connecting') {
+            statusBadge.classList.add('bg-warning');
+            statusText.textContent = 'Connecting...';
+            iconClass = 'loader';
+        } else if (status === 'close') {
+            statusBadge.classList.add('bg-secondary');
+            statusText.textContent = 'Disconnected';
+            iconClass = 'wifi-off';
+        } else {
+            statusBadge.classList.add('bg-secondary');
+            statusText.textContent = status || 'Unknown';
+        }
+        
+        // Update icon
+        const iconEl = statusBadge.querySelector('i');
+        if (iconEl) {
+            iconEl.className = `ti ti-${iconClass} me-1`;
+        }
+        
+        // Show profile info if connected
+        if (status === 'open' && profileData && profileInfo) {
+            let html = '';
+            if (profileData.profilePicUrl) {
+                html += `<img src="${profileData.profilePicUrl}" alt="Profile" class="rounded-circle" width="60" height="60">`;
+            }
+            if (profileData.profileName) {
+                html += `<p class="mb-0 mt-2 fw-bold">${profileData.profileName}</p>`;
+            }
+            if (profileData.ownerJid) {
+                html += `<small class="text-muted">${profileData.ownerJid}</small>`;
+            }
+            profileInfo.innerHTML = html;
+            profileInfo.classList.remove('d-none');
+        }
+    }
+    
+    function checkStatus() {
+        fetch(statusUrl)
+            .then(response => response.json())
+            .then(data => {
+                console.log('Status check:', data);
+                
+                if (data.is_connected) {
+                    // Connected! Stop polling and show success
+                    clearInterval(statusCheckInterval);
+                    updateStatusBadge('open', data.live_status);
+                    showState('connected');
+                    
+                    // Redirect after 2 seconds
+                    setTimeout(() => {
+                        window.location.href = credentialsUrl;
+                    }, 2000);
+                } else if (data.live_status) {
+                    updateStatusBadge(data.live_status.connectionStatus, data.live_status);
+                }
+            })
+            .catch(error => {
+                console.error('Status check error:', error);
+            });
+    }
+    
+    function fetchQRCode() {
+        showState('loading');
+        
+        fetch(refreshUrl)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    errorMessageEl.textContent = data.error;
+                    showState('error');
+                    return;
+                }
+                
+                if (data.base64) {
+                    qrImageEl.src = data.base64;
+                    showState('qr');
+                }
+                
+                if (data.pairingCode) {
+                    pairingCodeEl.textContent = data.pairingCode;
+                    pairingCodeContainerEl.classList.remove('d-none');
+                } else {
+                    pairingCodeContainerEl.classList.add('d-none');
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching QR code:', error);
+                errorMessageEl.textContent = 'Network error. Please try again.';
+                showState('error');
+            });
+    }
+    
+    // Start polling for status every 3 seconds
+    statusCheckInterval = setInterval(checkStatus, 3000);
+    
+    // Initial status check
+    checkStatus();
+    
+    // Button handlers
+    const refreshBtn = document.getElementById('refresh-qr');
+    if (refreshBtn) refreshBtn.addEventListener('click', fetchQRCode);
+    
+    const retryBtn = document.getElementById('retry-qr');
+    if (retryBtn) retryBtn.addEventListener('click', fetchQRCode);
+    
+    const loadBtn = document.getElementById('load-qr');
+    if (loadBtn) loadBtn.addEventListener('click', fetchQRCode);
+});
+</script>
+{% endblock javascripts %}

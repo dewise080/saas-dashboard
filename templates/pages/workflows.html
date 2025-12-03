@@ -1,0 +1,41 @@
+{% extends "layouts/base-minimal.html" %}
+{% load i18n static %}
+
+{% block title %}Workflow Editor{% endblock %}
+
+{% block extrastyle %}
+<!-- Pengaa Flow React App CSS -->
+<link rel="stylesheet" href="{% static 'pengaa-flow/assets/index-DsKMaJ4i.css' %}">
+<style>
+  /* Override base styles for full-screen editor */
+  body {
+    overflow: hidden;
+  }
+  .pc-container {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .pc-content {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  #pengaa-flow-root {
+    width: 100vw;
+    height: 100vh;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- React App Mount Point -->
+<div id="pengaa-flow-root"></div>
+{% endblock %}
+
+{% block extrascript %}
+<!-- Pengaa Flow React App JS -->
+<script type="module" src="{% static 'pengaa-flow/assets/index-CDpl2szy.js' %}"></script>
+{% endblock %}

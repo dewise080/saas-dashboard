@@ -1,0 +1,72 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+
+{% block title %}My n8n Workflows{% endblock title %}
+
+{% block content %}
+<div class="pc-container">
+  <div class="pc-content">
+    <div class="page-header">
+      <div class="page-block">
+        <div class="row align-items-center">
+          <div class="col-md-12">
+            <div class="page-header-title">
+              <h5 class="mb-0">My n8n Workflows</h5>
+            </div>
+          </div>
+          <div class="col-md-12">
+            <ul class="breadcrumb mb-0">
+              <li class="breadcrumb-item"><a href="{% url 'index' %}">Home</a></li>
+              <li class="breadcrumb-item" aria-current="page">My Workflows</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="alert alert-secondary" role="alert">
+      Viewing workflows linked to n8n user email: {{ user_email|default:"(no email detected)" }}
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">Workflows</h5>
+      </div>
+      <div class="card-body px-0 py-0">
+        <div class="table-responsive">
+          <table class="table mb-0">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Active</th>
+                <th>Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for workflow in workflows %}
+                <tr>
+                  <td><a href="{% url 'n8n_mirror:workflow_detail' workflow.id %}">{{ workflow.id }}</a></td>
+                  <td>{{ workflow.name }}</td>
+                  <td>{{ workflow.active }}</td>
+                  <td>{{ workflow.updatedAt }}</td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="4" class="text-center p-3">
+                    {% if matched_users %}
+                      No workflows were shared with this user.
+                    {% else %}
+                      No matching n8n user record was found for this account.
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %}

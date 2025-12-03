@@ -1,0 +1,144 @@
+a {
+    text-decoration: none;
+}
+
+.cm-editor {
+    outline: none !important;
+}
+
+.cm-scroller {
+    overflow: auto;
+    min-height: 400px;
+    max-height: 400px;
+}
+
+.cm-content, .cm-gutter {
+    min-height: 400px !important;
+}
+
+.link-primary {
+    cursor: pointer;
+}
+
+.rows-input {
+    text-align: center;
+    width: 40px;
+}
+
+.overflow-wrapper {
+    overflow: auto; height: 500px;
+}
+
+.data-headers {
+    background: white;
+    position: sticky;
+    top: 0;
+}
+
+.log-sql {
+    word-wrap: break-word;
+    white-space: normal !important;
+}
+
+.list {
+    -webkit-padding-start: 0;
+    list-style: none;
+}
+
+.schema-wrapper {
+    overflow: hidden;
+}
+
+.toggle {
+    cursor: pointer;
+}
+
+td.name.indented {
+    padding-left: 30px;
+}
+
+.stats-expand {
+    cursor: pointer;
+}
+
+.stats-th .counter{
+    border: 0 solid white;
+}
+
+.table>thead>tr>th.preview-header {
+    white-space: nowrap;
+    border: 0 solid white;
+}
+
+div.sort {
+    cursor: pointer;
+}
+
+#schema_frame {
+    width: 100%;
+    border: 0;
+}
+
+.schema-header {
+    cursor: pointer;
+}
+
+.counter {
+    background-color: #ecf0f1;
+    font-family: monospace;
+}
+
+.sql {
+    width: 33%;
+}
+
+.query_favorite_toggle {
+    cursor: pointer;
+}
+
+.query_favourite_detail {
+    float: right;
+}
+
+.btn-save-only {
+    border-radius: 0 !important;
+}
+
+.vite-not-running-canary {
+    display: none;
+}
+
+.dropdown-toggle::after {
+    margin-left: 0 !important;
+}
+
+#sql_editor_container {
+    position: relative;
+}
+
+#schema_tooltip {
+    position: absolute;
+    bottom: 1rem;
+    z-index: 1000;
+    background-color: white;
+    border: 1px solid black;
+    padding: 5px;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.logo-image {
+    height: 2rem;
+}
+
+.stats-wrapper {
+    td {
+        padding-top: 0;
+        padding-bottom: 0;
+        border: none;
+    }
+}
+
+.copyable {
+    cursor: copy;
+}

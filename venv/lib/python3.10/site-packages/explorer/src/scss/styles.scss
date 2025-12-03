@@ -1,0 +1,12 @@
+@import "variables";
+
+@import "~bootstrap/scss/bootstrap";
+
+$bootstrap-icons-font-dir: "../../../node_modules/bootstrap-icons/font/fonts";
+@import "~bootstrap-icons/font/bootstrap-icons.css";
+
+@import "explorer";
+@import "assistant";
+@import "choices";
+
+@import "pivot.css";

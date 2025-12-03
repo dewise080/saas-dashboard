@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+{% load i18n static %}
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}{% endblock title %} | Pengaa</title>
+    {% block extrastyle %}{% endblock extrastyle %}
+  </head>
+  <body style="margin: 0; padding: 0; overflow: hidden;">
+    {% block content %}{% endblock content %}
+    {% block extrascript %}{% endblock extrascript %}
+  </body>
+</html>

@@ -1,0 +1,124 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+
+{% block title %}Workflow {{ workflow.name }}{% endblock title %}
+
+{% block content %}
+<div class="pc-container">
+  <div class="pc-content">
+    <div class="page-header">
+      <div class="page-block">
+        <div class="row align-items-center">
+          <div class="col-md-12">
+            <div class="page-header-title">
+              <h5 class="mb-0">Workflow Details</h5>
+            </div>
+          </div>
+          <div class="col-md-12">
+            <ul class="breadcrumb mb-0">
+              <li class="breadcrumb-item"><a href="{% url 'index' %}">Home</a></li>
+              <li class="breadcrumb-item"><a href="{% url 'n8n_mirror:my_workflows' %}">My Workflows</a></li>
+              <li class="breadcrumb-item" aria-current="page">{{ workflow.name }}</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-lg-6">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0">Workflow</h5>
+          </div>
+          <div class="card-body">
+            <dl class="row mb-0">
+              <dt class="col-sm-4">ID</dt>
+              <dd class="col-sm-8">{{ workflow.id }}</dd>
+              <dt class="col-sm-4">Name</dt>
+              <dd class="col-sm-8">{{ workflow.name }}</dd>
+              <dt class="col-sm-4">Active</dt>
+              <dd class="col-sm-8">{{ workflow.active }}</dd>
+              <dt class="col-sm-4">Archived</dt>
+              <dd class="col-sm-8">{{ workflow.isArchived }}</dd>
+              <dt class="col-sm-4">Created</dt>
+              <dd class="col-sm-8">{{ workflow.createdAt }}</dd>
+              <dt class="col-sm-4">Updated</dt>
+              <dd class="col-sm-8">{{ workflow.updatedAt }}</dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0">Webhooks</h5>
+          </div>
+          <div class="card-body px-0 py-0">
+            <div class="table-responsive">
+              <table class="table mb-0">
+                <thead>
+                  <tr>
+                    <th>Path</th>
+                    <th>Method</th>
+                    <th>Node</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for webhook in webhooks %}
+                    <tr>
+                      <td>{{ webhook.webhookPath }}</td>
+                      <td>{{ webhook.method }}</td>
+                      <td>{{ webhook.node }}</td>
+                    </tr>
+                  {% empty %}
+                    <tr>
+                      <td colspan="3" class="text-center p-3">No webhooks registered.</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">Execution History</h5>
+      </div>
+      <div class="card-body px-0 py-0">
+        <div class="table-responsive">
+          <table class="table mb-0">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Status</th>
+                <th>Mode</th>
+                <th>Started</th>
+                <th>Stopped</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for execution in executions %}
+                <tr>
+                  <td>{{ execution.id }}</td>
+                  <td>{{ execution.status }}</td>
+                  <td>{{ execution.mode }}</td>
+                  <td>{{ execution.startedAt }}</td>
+                  <td>{{ execution.stoppedAt }}</td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="5" class="text-center p-3">No executions found.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %}

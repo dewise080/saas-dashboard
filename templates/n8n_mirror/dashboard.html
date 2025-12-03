@@ -1,0 +1,85 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+
+{% block title %}n8n Dashboard{% endblock title %}
+
+{% block content %}
+<div class="pc-container">
+  <div class="pc-content">
+    <div class="page-header">
+      <div class="page-block">
+        <div class="row align-items-center">
+          <div class="col-md-12">
+            <div class="page-header-title">
+              <h5 class="mb-0">n8n Dashboard</h5>
+            </div>
+          </div>
+          <div class="col-md-12">
+            <ul class="breadcrumb mb-0">
+              <li class="breadcrumb-item"><a href="{% url 'index' %}">Home</a></li>
+              <li class="breadcrumb-item" aria-current="page">n8n Dashboard</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-md-6 col-xl-3">
+        <div class="card">
+          <div class="card-body">
+            <h6 class="mb-2 text-muted">Workflows</h6>
+            <h3 class="mb-0">{{ workflow_count|default:0 }}</h3>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-xl-3">
+        <div class="card">
+          <div class="card-body">
+            <h6 class="mb-2 text-muted">Executions</h6>
+            <h3 class="mb-0">{{ execution_count|default:0 }}</h3>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">Recent Executions</h5>
+      </div>
+      <div class="card-body px-0 py-0">
+        <div class="table-responsive">
+          <table class="table mb-0">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Workflow</th>
+                <th>Status</th>
+                <th>Mode</th>
+                <th>Started</th>
+                <th>Stopped</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for execution in recent_executions %}
+                <tr>
+                  <td>{{ execution.id }}</td>
+                  <td>{{ execution.workflowId }}</td>
+                  <td>{{ execution.status }}</td>
+                  <td>{{ execution.mode }}</td>
+                  <td>{{ execution.startedAt }}</td>
+                  <td>{{ execution.stoppedAt }}</td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="6" class="text-center p-3">No executions found.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %}
