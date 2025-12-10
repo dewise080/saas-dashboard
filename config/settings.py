@@ -278,6 +278,9 @@ API for AI-driven email outreach based on Google Maps lead data.
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
     'SCHEMA_PATH_PREFIX': r'/gmaps-leads/api/',
+    'SERVERS': [
+        {'url': 'https://app.whatsynaptic.tech', 'description': 'Production'},
+    ],
     'TAGS': [
         {'name': 'AI Email Generation', 'description': 'Endpoints for AI to generate personalized emails'},
         {'name': 'Email Templates', 'description': 'Manage email templates'},
