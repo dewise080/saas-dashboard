@@ -11,6 +11,7 @@ urlpatterns = [
   path('credentials/', views.credentials, name='credentials'),
   path('credentials/openai/save/', views.save_openai_key, name='save_openai_key'),
   path('credentials/openai/validate/', views.validate_openai_key, name='validate_openai_key'),
+  path('n8n/overview/', views.n8n_user_dashboard, name='n8n_user_dashboard'),
   path('whatsapp/connect/<str:instance_name>/', views.whatsapp_connect, name='whatsapp_connect'),
   path('whatsapp/refresh-qr/<str:instance_name>/', views.whatsapp_refresh_qr, name='whatsapp_refresh_qr'),
   path('whatsapp/status/<str:instance_name>/', views.whatsapp_status_api, name='whatsapp_status_api'),

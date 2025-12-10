@@ -24,6 +24,7 @@ from drf_spectacular.renderers import OpenApiJsonRenderer
 urlpatterns = [
     path("", include(("accounts_plus.urls", "accounts_plus"), namespace="accounts_plus")),
     path('', include(("apps.pages.urls", "apps.pages"), namespace="apps.pages")),
+    path('', include('apps.pages.dashboard_urls')),
     path("n8n/", include("n8n_mirror.urls")),
     path("explorer/", include("explorer.urls")),  # SQL Explorer
     path("gmaps-leads/", include("gmaps_leads.urls")),  # Google Maps Leads

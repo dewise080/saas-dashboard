@@ -50,3 +50,35 @@ class UserWhatsAppInstance(models.Model):
 
     def __str__(self):
         return f"{self.instance_name} ({self.whatsapp_number})"
+
+
+class N8NExecutionSnapshot(models.Model):
+    """
+    Stores parsed execution metadata from the n8n mirror so we can display
+    token/cost history without repeatedly parsing large payloads.
+    """
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="n8n_execution_snapshots")
+    workflow_id = models.CharField(max_length=64, db_index=True)
+    execution_id = models.BigIntegerField(unique=True)
+    status = models.CharField(max_length=64, blank=True, default="")
+    mode = models.CharField(max_length=64, blank=True, default="")
+    started_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    stopped_at = models.DateTimeField(null=True, blank=True)
+
+    tokens_total = models.IntegerField(null=True, blank=True)
+    tokens_prompt = models.IntegerField(null=True, blank=True)
+    tokens_completion = models.IntegerField(null=True, blank=True)
+    usage_raw = models.JSONField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-started_at", "-execution_id")
+        indexes = [
+            models.Index(fields=["workflow_id", "started_at"]),
+            models.Index(fields=["user", "started_at"]),
+        ]
+
+    def __str__(self):
+        return f"Exec {self.execution_id} ({self.workflow_id})"

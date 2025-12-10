@@ -51,6 +51,14 @@
             <span class="pc-mtext">Workflows</span>
           </a>
         </li>
+        {% if request.user.is_authenticated %}
+        <li class="pc-item">
+          <a href="{% url 'apps.pages:n8n_user_dashboard' %}" class="pc-link">
+            <span class="pc-micon"><i data-feather="activity"></i></span>
+            <span class="pc-mtext">My n8n Overview</span>
+          </a>
+        </li>
+        {% endif %}
 
         <li class="pc-item pc-caption">
           <label>WhatsApp</label>

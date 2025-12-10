@@ -1,0 +1,201 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+
+{% block title %}My n8n Overview{% endblock title %}
+
+{% block content %}
+<div class="pc-container">
+  <div class="pc-content">
+    <div class="page-header">
+      <div class="page-block">
+        <div class="row align-items-center">
+          <div class="col-md-12">
+            <div class="page-header-title">
+              <h5 class="mb-0">My n8n Overview</h5>
+            </div>
+          </div>
+          <div class="col-md-12">
+            <ul class="breadcrumb mb-0">
+              <li class="breadcrumb-item"><a href="{% url "apps.pages:index" %}">Home</a></li>
+              <li class="breadcrumb-item" aria-current="page">n8n</li>
+              <li class="breadcrumb-item" aria-current="page">My Overview</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-md-3">
+        <div class="card">
+          <div class="card-body">
+            <h6 class="mb-2">Workflows</h6>
+            <h3 class="f-w-300">{{ workflows_count }}</h3>
+            <span class="badge bg-brand-color-1">Shared to {{ user_email|default:"(no email)" }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card">
+          <div class="card-body">
+            <h6 class="mb-2">Recent Executions</h6>
+            <h3 class="f-w-300">{{ recent_executions|length }}</h3>
+            <span class="badge bg-info">Last 10 runs</span>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card">
+          <div class="card-body">
+            <h6 class="mb-2">Status Breakdown</h6>
+            {% for row in status_breakdown %}
+              <span class="badge bg-secondary me-1">{{ row.status|default:"unknown" }}: {{ row.total }}</span>
+            {% empty %}
+              <span class="text-muted">No executions yet</span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card">
+          <div class="card-body">
+            <h6 class="mb-2">Token Usage (recent)</h6>
+            {% if recent_exec_data and recent_exec_data.0.tokens %}
+              {% with tok=recent_exec_data.0.tokens %}
+              <h3 class="f-w-300">
+                {% if tok.total %}{{ tok.total }} total{% else %}—{% endif %}
+              </h3>
+              <div class="small text-muted">
+                {% if tok.prompt %}Prompt: {{ tok.prompt }}{% endif %}
+                {% if tok.completion %} | Completion: {{ tok.completion }}{% endif %}
+              </div>
+              <span class="badge bg-success mt-1">From latest execution</span>
+              {% endwith %}
+            {% else %}
+              <span class="text-muted">Not available</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row mt-3">
+      <div class="col-md-3">
+        <div class="card">
+          <div class="card-body">
+            <h6 class="mb-2">Tokens (last 30d)</h6>
+            {% with tot=usage_totals_30d %}
+              <h4 class="f-w-300 mb-1">{{ tot.total_tokens|default:"0" }}</h4>
+              <div class="small text-muted">
+                Prompt: {{ tot.prompt_tokens|default:"0" }} | Completion: {{ tot.completion_tokens|default:"0" }}
+              </div>
+            {% endwith %}
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card">
+          <div class="card-body">
+            <h6 class="mb-2">Tokens (all time)</h6>
+            {% with tot=usage_totals_all %}
+              <h4 class="f-w-300 mb-1">{{ tot.total_tokens|default:"0" }}</h4>
+              <div class="small text-muted">
+                Prompt: {{ tot.prompt_tokens|default:"0" }} | Completion: {{ tot.completion_tokens|default:"0" }}
+              </div>
+            {% endwith %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row mt-4">
+      <div class="col-md-12">
+        <div class="card">
+          <div class="card-header">
+            <h5>My Workflows</h5>
+          </div>
+          <div class="card-body px-0 py-3">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Active</th>
+                    <th>Archived</th>
+                    <th>Triggers</th>
+                    <th>Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for wf in workflows %}
+                  <tr>
+                    <td class="text-monospace small">{{ wf.id }}</td>
+                    <td>{{ wf.name }}</td>
+                    <td><span class="badge {{ wf.active|yesno:'bg-success,bg-secondary' }}">{{ wf.active|yesno:"Yes,No" }}</span></td>
+                    <td><span class="badge {{ wf.isArchived|yesno:'bg-danger,bg-secondary' }}">{{ wf.isArchived|yesno:"Yes,No" }}</span></td>
+                    <td>{{ wf.triggerCount }}</td>
+                    <td>{{ wf.updatedAt }}</td>
+                  </tr>
+                  {% empty %}
+                  <tr><td colspan="6" class="text-center text-muted py-4">No workflows shared to your account yet.</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row mt-4">
+      <div class="col-md-12">
+        <div class="card">
+          <div class="card-header">
+            <h5>Recent Executions</h5>
+          </div>
+          <div class="card-body px-0 py-3">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Status</th>
+                    <th>Workflow</th>
+                    <th>Started</th>
+                    <th>Stopped</th>
+                    <th>Tokens (if any)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in recent_exec_data %}
+                  <tr>
+                    <td class="text-monospace small">{{ row.exec.id }}</td>
+                    <td><span class="badge bg-secondary">{{ row.exec.status|default:"unknown" }}</span></td>
+                    <td class="text-monospace small">{{ row.exec.workflowId }}</td>
+                    <td>{{ row.exec.startedAt|default:"—" }}</td>
+                    <td>{{ row.exec.stoppedAt|default:"—" }}</td>
+                    <td>
+                      {% if row.tokens %}
+                        {% if row.tokens.total %}{{ row.tokens.total }} total{% endif %}
+                        <div class="small text-muted">
+                          {% if row.tokens.prompt %}Prompt: {{ row.tokens.prompt }}{% endif %}
+                          {% if row.tokens.completion %} | Completion: {{ row.tokens.completion }}{% endif %}
+                        </div>
+                      {% else %}—{% endif %}
+                    </td>
+                  </tr>
+                  {% empty %}
+                  <tr><td colspan="6" class="text-center text-muted py-4">No executions yet.</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock content %}

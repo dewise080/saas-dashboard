@@ -1,10 +1,15 @@
+import json
+import re
 import requests
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 from django.http import JsonResponse
+from django.db.models import Count, Sum
+from django.utils import timezone
+from datetime import timedelta
 
-from apps.pages.models import Product, UserTelegramCredential, UserWhatsAppInstance
+from apps.pages.models import Product, UserTelegramCredential, UserWhatsAppInstance, N8NExecutionSnapshot
 from apps.pages.evolution_db import (
     get_all_instances_status, 
     get_instance_status, 
@@ -139,6 +144,250 @@ def workflows(request):
     'segment': 'workflows'
   }
   return render(request, "pages/workflows.html", context)
+
+
+@login_required
+def n8n_user_dashboard(request):
+  """
+  Personalized n8n overview for the logged-in user:
+  - Workflows shared with them
+  - Recent executions
+  - Basic status breakdown and token usage (best-effort parse)
+  """
+  from n8n_mirror.models import (
+    UserEntity,
+    SharedWorkflow,
+    WorkflowEntity,
+    ExecutionEntity,
+    ExecutionData,
+    ProjectRelation,
+  )
+
+  user_email = (request.user.email or "").strip()
+
+  matched_users = UserEntity.objects.using("n8n").filter(email__iexact=user_email) if user_email else UserEntity.objects.none()
+
+  # Collect all possible n8n user IDs tied to this Django user
+  n8n_user_ids = set(matched_users.values_list("id", flat=True))
+  profile = UserN8NProfile.objects.filter(user=request.user).first()
+  if profile and profile.n8n_user_id:
+    n8n_user_ids.add(profile.n8n_user_id)
+
+  # Map user -> project(s) -> shared workflows
+  project_ids = set()
+  if n8n_user_ids:
+    project_ids.update(
+      SharedWorkflow.objects.using("n8n")
+      .filter(projectId__in=n8n_user_ids)
+      .values_list("projectId", flat=True)
+    )
+    project_ids.update(
+      ProjectRelation.objects.using("n8n")
+      .filter(userId__in=n8n_user_ids)
+      .values_list("projectId", flat=True)
+    )
+
+  shared_workflows = (
+    SharedWorkflow.objects.using("n8n").filter(projectId__in=project_ids)
+    if project_ids
+    else SharedWorkflow.objects.none()
+  )
+
+  workflow_ids = list(shared_workflows.values_list("workflowId", flat=True))
+  workflows = (
+    WorkflowEntity.objects.using("n8n")
+    .filter(id__in=workflow_ids)
+    .order_by("-updatedAt")
+  )
+
+  executions_qs = (
+    ExecutionEntity.objects.using("n8n")
+    .filter(workflowId__in=workflow_ids)
+    .order_by("-startedAt")
+  )
+
+  recent_executions = list(executions_qs[:10])
+  # Prefetch any stored snapshots to avoid reparsing large payloads
+  snapshot_map = {
+    snap.execution_id: snap
+    for snap in N8NExecutionSnapshot.objects.filter(execution_id__in=[e.id for e in recent_executions])
+  }
+  status_breakdown = (
+    executions_qs.values("status").annotate(total=Count("id")).order_by("-total")
+  )
+
+  # Best-effort token usage extraction from execution data payloads
+  token_usage = {}
+  recent_exec_data = []
+  if recent_executions:
+    execution_ids = [exec.id for exec in recent_executions]
+    data_map = {
+      str(ed.executionId_id): ed
+      for ed in ExecutionData.objects.using("n8n").filter(executionId__in=execution_ids)
+    }
+
+    def _best_usage_dict(obj):
+      """
+      Recursively scan for token usage dicts.
+      Returns the most complete dict found.
+      """
+      best = None
+
+      def score(dct):
+        if not isinstance(dct, dict):
+          return -1
+        keys = {"total_tokens", "prompt_tokens", "completion_tokens", "tokens"}
+        return sum(1 for k in dct if k in keys)
+
+      def walk(node):
+        nonlocal best
+        if isinstance(node, dict):
+          if "usage" in node and isinstance(node["usage"], dict):
+            if score(node["usage"]) > score(best or {}):
+              best = node["usage"]
+          if score(node) > score(best or {}):
+            best = node
+          for v in node.values():
+            walk(v)
+        elif isinstance(node, list):
+          for item in node:
+            walk(item)
+
+      walk(obj)
+      return best
+
+    def extract_tokens(ed):
+      if not ed:
+        return None
+      for raw in (ed.data, ed.workflowData):
+        parsed = None
+        if isinstance(raw, (dict, list)):
+          parsed = raw
+        elif isinstance(raw, str):
+          try:
+            parsed = json.loads(raw)
+          except Exception:
+            parsed = None
+        if parsed is not None:
+          usage_dict = _best_usage_dict(parsed)
+          if isinstance(usage_dict, dict):
+            total = usage_dict.get("total_tokens") or usage_dict.get("tokens")
+            prompt = usage_dict.get("prompt_tokens")
+            completion = usage_dict.get("completion_tokens")
+            return {
+              "total": total or (prompt or 0) + (completion or 0) if (prompt or completion) else None,
+              "prompt": prompt,
+              "completion": completion,
+              "raw": usage_dict,
+            }
+        # Regex fallback for token patterns inside raw strings
+        if isinstance(raw, str):
+          prompt_match = re.search(r'"?promptTokens"?\\s*:\\s*(\\d+)', raw)
+          completion_match = re.search(r'"?completionTokens"?\\s*:\\s*(\\d+)', raw)
+          total_match = re.search(r'"?totalTokens"?\\s*:\\s*(\\d+)', raw)
+          if prompt_match or completion_match or total_match:
+            prompt_val = int(prompt_match.group(1)) if prompt_match else None
+            completion_val = int(completion_match.group(1)) if completion_match else None
+            total_val = int(total_match.group(1)) if total_match else None
+            if total_val is None and (prompt_val is not None or completion_val is not None):
+              total_val = (prompt_val or 0) + (completion_val or 0)
+            return {
+              "total": total_val,
+              "prompt": prompt_val,
+              "completion": completion_val,
+              "raw": {"promptTokens": prompt_val, "completionTokens": completion_val, "totalTokens": total_val},
+            }
+      return None
+
+    for exec in recent_executions:
+      snap = snapshot_map.get(exec.id)
+      if snap and (snap.tokens_total or snap.tokens_prompt or snap.tokens_completion):
+        token_usage[exec.id] = {
+          "total": snap.tokens_total,
+          "prompt": snap.tokens_prompt,
+          "completion": snap.tokens_completion,
+        }
+      else:
+        token_usage[exec.id] = extract_tokens(data_map.get(str(exec.id)))
+      recent_exec_data.append({"exec": exec, "tokens": token_usage[exec.id]})
+
+    # Persist summaries for later billing/analytics
+    for exec in recent_executions:
+      usage = token_usage.get(exec.id) or {}
+      N8NExecutionSnapshot.objects.update_or_create(
+        execution_id=exec.id,
+        defaults={
+          "user": request.user if request.user.is_authenticated else None,
+          "workflow_id": exec.workflowId,
+          "status": exec.status,
+          "mode": getattr(exec, "mode", "") or "",
+          "started_at": exec.startedAt,
+          "stopped_at": exec.stoppedAt,
+          "tokens_total": usage.get("total"),
+          "tokens_prompt": usage.get("prompt"),
+          "tokens_completion": usage.get("completion"),
+          "usage_raw": usage.get("raw") or usage,
+        },
+      )
+
+  context = {
+    "segment": "n8n_user_dashboard",
+    "user_email": user_email,
+    "workflows": workflows,
+    "workflows_count": workflows.count(),
+    "recent_executions": recent_executions,
+    "recent_exec_data": recent_exec_data or [{"exec": e, "tokens": None} for e in recent_executions],
+    "status_breakdown": status_breakdown,
+    "token_usage": token_usage,
+  }
+  # Fallback: if nothing is linked, try user-bound snapshots
+  if not recent_exec_data:
+    snaps = list(
+      N8NExecutionSnapshot.objects.filter(user=request.user)
+      .order_by("-started_at")[:10]
+    )
+    if snaps:
+      from types import SimpleNamespace
+      recent_exec_data = []
+      for snap in snaps:
+        exec_obj = SimpleNamespace(
+          id=snap.execution_id,
+          status=snap.status,
+          workflowId=snap.workflow_id,
+          startedAt=snap.started_at,
+          stoppedAt=snap.stopped_at,
+        )
+        recent_exec_data.append({
+          "exec": exec_obj,
+          "tokens": {
+            "total": snap.tokens_total,
+            "prompt": snap.tokens_prompt,
+            "completion": snap.tokens_completion,
+          },
+        })
+      context["recent_exec_data"] = recent_exec_data
+      context["recent_executions"] = [row["exec"] for row in recent_exec_data]
+      context["status_breakdown"] = []
+      context["workflows"] = []
+      context["workflows_count"] = 0
+
+  # Totals for billing/usage
+  snapshots_qs = N8NExecutionSnapshot.objects.filter(user=request.user)
+  totals_all = snapshots_qs.aggregate(
+    total_tokens=Sum("tokens_total"),
+    prompt_tokens=Sum("tokens_prompt"),
+    completion_tokens=Sum("tokens_completion"),
+  )
+  cutoff = timezone.now() - timedelta(days=30)
+  totals_30d = snapshots_qs.filter(started_at__gte=cutoff).aggregate(
+    total_tokens=Sum("tokens_total"),
+    prompt_tokens=Sum("tokens_prompt"),
+    completion_tokens=Sum("tokens_completion"),
+  )
+  context["usage_totals_all"] = totals_all
+  context["usage_totals_30d"] = totals_30d
+
+  return render(request, "pages/n8n_user_dashboard.html", context)
 
 # Components
 def color(request):
@@ -704,5 +953,3 @@ def api_n8n_credentials(request):
     except Exception as e:
         print(f"[api_n8n_credentials] Error: {e}", flush=True)
         return JsonResponse({"credentials": [], "error": str(e)})
-
-
