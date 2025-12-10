@@ -1,0 +1,16 @@
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls %}
+
+{% block object-tools-items %}
+<li>
+    <a href="{{ sync_url }}" class="addlink" style="background: #17a2b8;">
+        🔄 Sync from Scraper API
+    </a>
+</li>
+<li>
+    <a href="{{ create_job_url }}" class="addlink">
+        ➕ Create New Job
+    </a>
+</li>
+{{ block.super }}
+{% endblock %}

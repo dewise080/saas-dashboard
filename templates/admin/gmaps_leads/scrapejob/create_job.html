@@ -1,0 +1,105 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block content %}
+<div id="content-main">
+    <form method="post" id="scrapejob_form">
+        {% csrf_token %}
+        
+        <fieldset class="module aligned">
+            <h2>Job Information</h2>
+            <div class="form-row">
+                <div>
+                    <label for="id_name" class="required">Job Name:</label>
+                    <input type="text" name="name" id="id_name" required maxlength="255" 
+                           class="vTextField" placeholder="e.g., Coffee shops in Berlin">
+                </div>
+            </div>
+            <div class="form-row">
+                <div>
+                    <label for="id_keywords" class="required">Keywords (one per line):</label>
+                    <textarea name="keywords" id="id_keywords" rows="5" class="vLargeTextField" required
+                              placeholder="coffee shops berlin&#10;cafes in berlin mitte&#10;espresso bar berlin"></textarea>
+                    <p class="help">Enter search keywords, one per line. These will be used to search Google Maps.</p>
+                </div>
+            </div>
+        </fieldset>
+        
+        <fieldset class="module aligned">
+            <h2>Search Settings</h2>
+            <div class="form-row">
+                <div style="display: inline-block; margin-right: 20px;">
+                    <label for="id_lang">Language:</label>
+                    <select name="lang" id="id_lang">
+                        <option value="en">English</option>
+                        <option value="de">German</option>
+                        <option value="fr">French</option>
+                        <option value="es">Spanish</option>
+                        <option value="it">Italian</option>
+                        <option value="pt">Portuguese</option>
+                        <option value="tr">Turkish</option>
+                        <option value="el">Greek</option>
+                        <option value="ar">Arabic</option>
+                        <option value="zh">Chinese</option>
+                        <option value="ja">Japanese</option>
+                        <option value="ko">Korean</option>
+                    </select>
+                </div>
+                <div style="display: inline-block; margin-right: 20px;">
+                    <label for="id_zoom">Zoom Level:</label>
+                    <input type="number" name="zoom" id="id_zoom" value="15" min="1" max="21" style="width: 60px;">
+                    <p class="help">1-21, higher = more detail</p>
+                </div>
+                <div style="display: inline-block; margin-right: 20px;">
+                    <label for="id_depth">Search Depth:</label>
+                    <input type="number" name="depth" id="id_depth" value="1" min="1" max="10" style="width: 60px;">
+                </div>
+                <div style="display: inline-block;">
+                    <label for="id_max_time">Max Time (seconds):</label>
+                    <input type="number" name="max_time" id="id_max_time" value="3600" min="60" style="width: 80px;">
+                </div>
+            </div>
+        </fieldset>
+        
+        <fieldset class="module aligned collapse">
+            <h2>Location (Optional)</h2>
+            <div class="form-row">
+                <div style="display: inline-block; margin-right: 20px;">
+                    <label for="id_lat">Latitude:</label>
+                    <input type="text" name="lat" id="id_lat" class="vTextField" placeholder="e.g., 52.5200">
+                </div>
+                <div style="display: inline-block; margin-right: 20px;">
+                    <label for="id_lon">Longitude:</label>
+                    <input type="text" name="lon" id="id_lon" class="vTextField" placeholder="e.g., 13.4050">
+                </div>
+                <div style="display: inline-block;">
+                    <label for="id_radius">Radius (meters):</label>
+                    <input type="number" name="radius" id="id_radius" style="width: 80px;" placeholder="5000">
+                </div>
+            </div>
+            <p class="help">If specified, search will be centered on this location.</p>
+        </fieldset>
+        
+        <fieldset class="module aligned">
+            <h2>Options</h2>
+            <div class="form-row">
+                <div style="display: inline-block; margin-right: 30px;">
+                    <input type="checkbox" name="email" id="id_email">
+                    <label for="id_email" class="vCheckboxLabel">Extract Emails</label>
+                    <p class="help">Attempt to find email addresses (slower)</p>
+                </div>
+                <div style="display: inline-block;">
+                    <input type="checkbox" name="fast_mode" id="id_fast_mode">
+                    <label for="id_fast_mode" class="vCheckboxLabel">Fast Mode</label>
+                    <p class="help">Faster but may return less data</p>
+                </div>
+            </div>
+        </fieldset>
+        
+        <div class="submit-row">
+            <input type="submit" value="Create & Start Job" class="default" name="_save">
+            <a href="{% url 'admin:gmaps_leads_scrapejob_changelist' %}" class="closelink">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

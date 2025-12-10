@@ -52,7 +52,7 @@ INSTALLED_APPS = [
     'jazzmin',
     "django.contrib.admin",
     "accounts_plus",
-    'admin_datta.apps.AdminDattaConfig',
+    # 'admin_datta.apps.AdminDattaConfig',  # Commented out - module not installed
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -64,8 +64,12 @@ INSTALLED_APPS = [
 
     # Tooling API-GEN
     'rest_framework',            # Include DRF           # <-- NEW 
-    'rest_framework.authtoken',  
+    'rest_framework.authtoken',
+    'drf_spectacular',           # OpenAPI 3.1 schema generation
     "n8n_mirror",
+    
+    # Google Maps Leads
+    "gmaps_leads",
 
     # SQL Explorer for database exploration
     "explorer",
@@ -245,6 +249,39 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.TokenAuthentication',
     ],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+# DRF Spectacular Settings (OpenAPI 3.1)
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'GMaps Leads AI Email API',
+    'DESCRIPTION': '''
+API for AI-driven email outreach based on Google Maps lead data.
+
+## Workflow
+
+1. **AI fetches lead context** via `GET /api/gmaps-leads/{id}/context/`
+2. **AI generates personalized email** using the business information
+3. **AI posts email template** via `POST /api/gmaps-leads/{id}/email-template/`
+4. **Signal emitted** when `mark_ready=true` - template ready for human review
+5. **Human reviews** in admin panel and approves/rejects
+
+## Key Endpoints
+
+- `GET /api/gmaps-leads/with-emails/` - Find leads ready for outreach
+- `GET /api/gmaps-leads/{id}/context/` - Get comprehensive lead data for AI
+- `POST /api/gmaps-leads/{id}/email-template/` - Submit AI-generated email
+- `PATCH /api/email-templates/{id}/status/` - Update template status
+    ''',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'SCHEMA_PATH_PREFIX': r'/gmaps-leads/api/',
+    'TAGS': [
+        {'name': 'AI Email Generation', 'description': 'Endpoints for AI to generate personalized emails'},
+        {'name': 'Email Templates', 'description': 'Manage email templates'},
+        {'name': 'Jobs', 'description': 'Scrape job management'},
+        {'name': 'Leads', 'description': 'Lead management'},
+    ],
 }
 
 # SQL Explorer Configuration
@@ -282,3 +319,9 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:8420",
 ]
 CORS_ALLOW_CREDENTIALS = True  # Allow cookies/session auth
+
+########################################
+# Google Maps Scraper API Settings
+########################################
+GMAPS_SCRAPER_API_URL = os.getenv('GMAPS_SCRAPER_API_URL', 'http://localhost:8080')
+GMAPS_CSV_DOWNLOAD_DIR = os.path.join(BASE_DIR, 'gmaps_downloads')  # Directory for downloaded CSV files

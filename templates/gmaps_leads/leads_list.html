@@ -1,0 +1,132 @@
+{% extends 'layouts/base-minimal.html' %}
+{% load static %}
+
+{% block title %}All Leads - GMaps Leads{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header pb-0">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">All Leads ({{ total_count }})</h5>
+                        <div>
+                            <a href="{% url 'gmaps_leads:export_csv' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" 
+                               class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-file-csv me-1"></i> Export CSV
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Filters -->
+                    <form method="get" class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <label class="form-label text-xs">Category</label>
+                            <select name="category" class="form-select form-select-sm">
+                                <option value="">All Categories</option>
+                                {% for cat in categories %}
+                                <option value="{{ cat }}" {% if request.GET.category == cat %}selected{% endif %}>{{ cat }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label text-xs">Min Rating</label>
+                            <select name="min_rating" class="form-select form-select-sm">
+                                <option value="">Any Rating</option>
+                                <option value="3" {% if request.GET.min_rating == "3" %}selected{% endif %}>3+ Stars</option>
+                                <option value="4" {% if request.GET.min_rating == "4" %}selected{% endif %}>4+ Stars</option>
+                                <option value="4.5" {% if request.GET.min_rating == "4.5" %}selected{% endif %}>4.5+ Stars</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label text-xs">&nbsp;</label>
+                            <div>
+                                <button type="submit" class="btn btn-info btn-sm">
+                                    <i class="fas fa-filter me-1"></i> Apply Filters
+                                </button>
+                                <a href="{% url 'gmaps_leads:leads_list' %}" class="btn btn-outline-secondary btn-sm">Clear</a>
+                            </div>
+                        </div>
+                    </form>
+                    
+                    <div class="table-responsive">
+                        <table class="table align-items-center mb-0">
+                            <thead>
+                                <tr>
+                                    <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">Business</th>
+                                    <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">Category</th>
+                                    <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">Contact</th>
+                                    <th class="text-center text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">Rating</th>
+                                    <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">Location</th>
+                                    <th class="text-secondary opacity-7"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for lead in leads %}
+                                <tr>
+                                    <td>
+                                        <div class="d-flex px-2 py-1">
+                                            <div class="d-flex flex-column justify-content-center">
+                                                <h6 class="mb-0 text-sm">{{ lead.title|truncatechars:35 }}</h6>
+                                                <p class="text-xs text-secondary mb-0">{{ lead.address|truncatechars:40|default:"-" }}</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-gradient-secondary">{{ lead.category|truncatechars:20|default:"-" }}</span>
+                                    </td>
+                                    <td>
+                                        <p class="text-xs font-weight-bold mb-0">{{ lead.phone|default:"-" }}</p>
+                                        {% if lead.website %}
+                                        <a href="{{ lead.website }}" target="_blank" class="text-xs text-info">
+                                            <i class="fas fa-external-link-alt"></i> Site
+                                        </a>
+                                        {% endif %}
+                                    </td>
+                                    <td class="align-middle text-center">
+                                        {% if lead.review_rating %}
+                                        <span class="text-warning">★</span>
+                                        <span class="text-xs font-weight-bold">{{ lead.review_rating }}</span>
+                                        <span class="text-xs text-muted">({{ lead.review_count }})</span>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if lead.complete_address %}
+                                        <p class="text-xs mb-0">{{ lead.complete_address.city|default:"" }}</p>
+                                        <p class="text-xs text-muted mb-0">{{ lead.complete_address.country|default:"" }}</p>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="align-middle">
+                                        <a href="{% url 'gmaps_leads:lead_detail' lead.pk %}" class="btn btn-link text-info px-2 mb-0">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-4">
+                                        <p class="text-muted mb-0">No leads found matching your criteria.</p>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    {% if total_count > 500 %}
+                    <div class="text-center py-3">
+                        <p class="text-muted text-sm">Showing first 500 results. Use filters or export to see all data.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

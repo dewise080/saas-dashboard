@@ -1,0 +1,228 @@
+{% extends 'layouts/base-minimal.html' %}
+{% load static %}
+
+{% block title %}{{ lead.title }} - GMaps Leads{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Main Info Card -->
+            <div class="card mb-4">
+                <div class="card-header pb-0">
+                    <div class="d-flex align-items-center">
+                        <a href="javascript:history.back()" class="btn btn-outline-secondary btn-sm me-3">
+                            <i class="fas fa-arrow-left"></i>
+                        </a>
+                        <div class="flex-grow-1">
+                            <h5 class="mb-0">{{ lead.title }}</h5>
+                            <span class="badge bg-gradient-info">{{ lead.category|default:"Uncategorized" }}</span>
+                        </div>
+                        {% if lead.review_rating %}
+                        <div class="text-end">
+                            <span class="text-warning h4">★</span>
+                            <span class="h5">{{ lead.review_rating }}</span>
+                            <span class="text-muted">({{ lead.review_count }} reviews)</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if lead.thumbnail %}
+                    <div class="mb-4">
+                        <img src="{{ lead.thumbnail }}" class="img-fluid rounded" alt="{{ lead.title }}" style="max-height: 200px;">
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Contact Info -->
+                    <h6 class="text-uppercase text-muted text-xs mb-3">Contact Information</h6>
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <p class="mb-2">
+                                <i class="fas fa-map-marker-alt text-danger me-2"></i>
+                                <strong>Address:</strong><br>
+                                <span class="ms-4">{{ lead.address|default:"-"|linebreaksbr }}</span>
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <p class="mb-2">
+                                <i class="fas fa-phone text-success me-2"></i>
+                                <strong>Phone:</strong> 
+                                {% if lead.phone %}
+                                <a href="tel:{{ lead.phone }}">{{ lead.phone }}</a>
+                                {% else %}-{% endif %}
+                            </p>
+                            <p class="mb-2">
+                                <i class="fas fa-globe text-info me-2"></i>
+                                <strong>Website:</strong> 
+                                {% if lead.website %}
+                                <a href="{{ lead.website }}" target="_blank">{{ lead.website|truncatechars:40 }}</a>
+                                {% else %}-{% endif %}
+                            </p>
+                            <p class="mb-2">
+                                <i class="fas fa-envelope text-warning me-2"></i>
+                                <strong>Email:</strong> {{ lead.emails|default:"-" }}
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <!-- Location -->
+                    {% if lead.latitude and lead.longitude %}
+                    <h6 class="text-uppercase text-muted text-xs mb-3">Location</h6>
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <p class="mb-2">
+                                <strong>Coordinates:</strong> {{ lead.latitude }}, {{ lead.longitude }}
+                                <a href="https://www.google.com/maps?q={{ lead.latitude }},{{ lead.longitude }}" 
+                                   target="_blank" class="btn btn-sm btn-outline-info ms-2">
+                                    <i class="fas fa-map"></i> View on Map
+                                </a>
+                            </p>
+                            {% if lead.complete_address %}
+                            <p class="mb-1"><strong>City:</strong> {{ lead.complete_address.city|default:"-" }}</p>
+                            <p class="mb-1"><strong>State:</strong> {{ lead.complete_address.state|default:"-" }}</p>
+                            <p class="mb-1"><strong>Country:</strong> {{ lead.complete_address.country|default:"-" }}</p>
+                            <p class="mb-1"><strong>Postal Code:</strong> {{ lead.complete_address.postal_code|default:"-" }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Opening Hours -->
+                    {% if lead.open_hours %}
+                    <h6 class="text-uppercase text-muted text-xs mb-3">Opening Hours</h6>
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <table class="table table-sm">
+                                {% for day, hours in lead.open_hours.items %}
+                                <tr>
+                                    <td class="text-capitalize" style="width: 120px;"><strong>{{ day }}</strong></td>
+                                    <td>
+                                        {% for hour in hours %}
+                                        {{ hour }}{% if not forloop.last %}, {% endif %}
+                                        {% endfor %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </table>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- About/Amenities -->
+                    {% if lead.about %}
+                    <h6 class="text-uppercase text-muted text-xs mb-3">About & Amenities</h6>
+                    <div class="mb-4">
+                        {% for section in lead.about %}
+                        <div class="mb-2">
+                            <strong>{{ section.name }}:</strong>
+                            {% for option in section.options %}
+                            {% if option.enabled %}
+                            <span class="badge bg-success ms-1">{{ option.name }}</span>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-4">
+            <!-- Quick Stats -->
+            <div class="card mb-4">
+                <div class="card-header pb-0">
+                    <h6 class="mb-0">Quick Stats</h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-3">
+                        <span class="text-muted">Rating</span>
+                        <span class="font-weight-bold">
+                            {% if lead.review_rating %}
+                            <span class="text-warning">★</span> {{ lead.review_rating }}
+                            {% else %}-{% endif %}
+                        </span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span class="text-muted">Reviews</span>
+                        <span class="font-weight-bold">{{ lead.review_count }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span class="text-muted">Price Range</span>
+                        <span class="font-weight-bold">{{ lead.price_range|default:"-" }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span class="text-muted">Timezone</span>
+                        <span class="font-weight-bold">{{ lead.timezone|default:"-" }}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Reviews Distribution -->
+            {% if lead.reviews_per_rating %}
+            <div class="card mb-4">
+                <div class="card-header pb-0">
+                    <h6 class="mb-0">Reviews Distribution</h6>
+                </div>
+                <div class="card-body">
+                    {% for star, count in lead.reviews_per_rating.items %}
+                    <div class="d-flex align-items-center mb-2">
+                        <span style="width: 30px;">{{ star }}★</span>
+                        <div class="progress flex-grow-1 mx-2" style="height: 8px;">
+                            {% widthratio count lead.review_count 100 as percentage %}
+                            <div class="progress-bar bg-warning" style="width: {{ percentage|default:0 }}%"></div>
+                        </div>
+                        <span style="width: 30px;" class="text-end text-xs">{{ count }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Links -->
+            <div class="card mb-4">
+                <div class="card-header pb-0">
+                    <h6 class="mb-0">Links</h6>
+                </div>
+                <div class="card-body">
+                    {% if lead.link %}
+                    <a href="{{ lead.link }}" target="_blank" class="btn btn-outline-primary btn-sm w-100 mb-2">
+                        <i class="fab fa-google me-2"></i> Google Maps
+                    </a>
+                    {% endif %}
+                    {% if lead.website %}
+                    <a href="{{ lead.website }}" target="_blank" class="btn btn-outline-info btn-sm w-100 mb-2">
+                        <i class="fas fa-globe me-2"></i> Website
+                    </a>
+                    {% endif %}
+                    {% if lead.reviews_link %}
+                    <a href="{{ lead.reviews_link }}" target="_blank" class="btn btn-outline-warning btn-sm w-100">
+                        <i class="fas fa-star me-2"></i> Reviews
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Metadata -->
+            <div class="card">
+                <div class="card-header pb-0">
+                    <h6 class="mb-0">Metadata</h6>
+                </div>
+                <div class="card-body">
+                    <p class="text-xs mb-1"><strong>CID:</strong> {{ lead.cid|default:"-" }}</p>
+                    <p class="text-xs mb-1"><strong>Data ID:</strong> {{ lead.data_id|default:"-" }}</p>
+                    <p class="text-xs mb-1"><strong>Plus Code:</strong> {{ lead.plus_code|default:"-" }}</p>
+                    <p class="text-xs mb-1"><strong>Imported:</strong> {{ lead.created_at|date:"M d, Y H:i" }}</p>
+                    {% if lead.job %}
+                    <p class="text-xs mb-1">
+                        <strong>Job:</strong> 
+                        <a href="{% url 'gmaps_leads:job_detail' lead.job.pk %}">{{ lead.job.name }}</a>
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

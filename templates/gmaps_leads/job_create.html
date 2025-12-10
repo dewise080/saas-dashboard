@@ -1,0 +1,142 @@
+{% extends 'layouts/base-minimal.html' %}
+{% load static %}
+
+{% block title %}Create Scrape Job - GMaps Leads{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-lg-8 col-md-10 mx-auto">
+            <div class="card">
+                <div class="card-header pb-0">
+                    <div class="d-flex align-items-center">
+                        <a href="{% url 'gmaps_leads:job_list' %}" class="btn btn-outline-secondary btn-sm me-3">
+                            <i class="fas fa-arrow-left"></i>
+                        </a>
+                        <h5 class="mb-0">Create New Scrape Job</h5>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if messages %}
+                    {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+                    
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        <!-- Job Info -->
+                        <h6 class="text-uppercase text-muted mb-3">Job Information</h6>
+                        <div class="row">
+                            <div class="col-12 mb-3">
+                                <label class="form-label">Job Name *</label>
+                                <input type="text" name="name" class="form-control" required 
+                                       placeholder="e.g., Coffee shops in Berlin" maxlength="255">
+                            </div>
+                            <div class="col-12 mb-3">
+                                <label class="form-label">Keywords (one per line) *</label>
+                                <textarea name="keywords" class="form-control" rows="4" required
+                                          placeholder="coffee shops berlin&#10;cafes in berlin mitte&#10;espresso bar berlin"></textarea>
+                                <small class="text-muted">Enter search terms that will be used to find businesses on Google Maps</small>
+                            </div>
+                        </div>
+                        
+                        <hr class="horizontal dark my-4">
+                        
+                        <!-- Search Settings -->
+                        <h6 class="text-uppercase text-muted mb-3">Search Settings</h6>
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Language</label>
+                                <select name="lang" class="form-select">
+                                    <option value="en">English</option>
+                                    <option value="de">German</option>
+                                    <option value="fr">French</option>
+                                    <option value="es">Spanish</option>
+                                    <option value="it">Italian</option>
+                                    <option value="pt">Portuguese</option>
+                                    <option value="tr">Turkish</option>
+                                    <option value="el">Greek</option>
+                                    <option value="ar">Arabic</option>
+                                    <option value="zh">Chinese</option>
+                                    <option value="ja">Japanese</option>
+                                    <option value="ko">Korean</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Zoom Level</label>
+                                <input type="number" name="zoom" class="form-control" value="15" min="1" max="21">
+                                <small class="text-muted">1-21 (higher = more detail)</small>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Search Depth</label>
+                                <input type="number" name="depth" class="form-control" value="1" min="1" max="10">
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Max Time (sec)</label>
+                                <input type="number" name="max_time" class="form-control" value="3600" min="60">
+                            </div>
+                        </div>
+                        
+                        <hr class="horizontal dark my-4">
+                        
+                        <!-- Location (Optional) -->
+                        <h6 class="text-uppercase text-muted mb-3">
+                            Location <span class="text-xs font-weight-normal">(Optional)</span>
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Latitude</label>
+                                <input type="text" name="lat" class="form-control" placeholder="e.g., 52.5200">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Longitude</label>
+                                <input type="text" name="lon" class="form-control" placeholder="e.g., 13.4050">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Radius (meters)</label>
+                                <input type="number" name="radius" class="form-control" placeholder="5000">
+                            </div>
+                        </div>
+                        <small class="text-muted">If specified, the search will be centered on this location.</small>
+                        
+                        <hr class="horizontal dark my-4">
+                        
+                        <!-- Options -->
+                        <h6 class="text-uppercase text-muted mb-3">Options</h6>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="email" id="emailSwitch">
+                                    <label class="form-check-label" for="emailSwitch">Extract Emails</label>
+                                </div>
+                                <small class="text-muted">Attempt to find email addresses (slower)</small>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="fast_mode" id="fastModeSwitch">
+                                    <label class="form-check-label" for="fastModeSwitch">Fast Mode</label>
+                                </div>
+                                <small class="text-muted">Faster but may return less data</small>
+                            </div>
+                        </div>
+                        
+                        <hr class="horizontal dark my-4">
+                        
+                        <div class="d-flex justify-content-end">
+                            <a href="{% url 'gmaps_leads:job_list' %}" class="btn btn-outline-secondary me-2">Cancel</a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-play me-2"></i>Create & Start Job
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
