@@ -54,7 +54,7 @@ INSTALLED_APPS = [
     'jazzmin',
     "django.contrib.admin",
     "accounts_plus",
-    # 'admin_datta.apps.AdminDattaConfig',  # Commented out - module not installed
+    'admin_datta.apps.AdminDattaConfig',  # Re-enabled - module is installed
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
