@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="en">
+  <head>
+    {% include 'includes/head.html' %}
+    <title>{% block title %}{% endblock title %} | Pengaa</title>
+    {% block extrastyle %}{% endblock extrastyle %}
+  </head>
+  <body data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" data-pc-theme="light">
+    <!-- [ Pre-loader ] start -->
+    {% include 'includes/loader.html' %}
+    <!-- [ Pre-loader ] End -->
+
+    <!-- [ Sidebar Menu ] start -->
+    {% include 'includes/sidebar.html' %}
+    <!-- [ Sidebar Menu ] end -->
+
+    <!-- [ Header Topbar ] start -->
+    {% include 'includes/navigation.html' %}
+    <!-- [ Header Topbar ] end -->
+
+    <!-- [ Main Content ] start -->
+    <div class="pc-container">
+      <div class="pc-content">
+        {% block content %}{% endblock content %}
+      </div>
+    </div>
+    <!-- [ Main Content ] end -->
+
+    <!-- [ Footer ] start -->
+    {% include 'includes/footer.html' %}
+    <!-- [ Footer ] end -->
+
+    {% include 'includes/scripts.html' %}
+    {% block extrascript %}{% endblock extrascript %}
+  </body>
+</html>
