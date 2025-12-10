@@ -4,6 +4,19 @@ services:
     container_name: appseed_app
     restart: always
     build: .
+    env_file:
+      - .env
+    environment:
+      - DEBUG=${DEBUG:-False}
+      - SECRET_KEY=${SECRET_KEY}
+      - GMAPS_SCRAPER_API_URL=${GMAPS_SCRAPER_API_URL}
+      - N8N_DB_NAME=${N8N_DB_NAME}
+      - N8N_DB_USER=${N8N_DB_USER}
+      - N8N_DB_PASSWORD=${N8N_DB_PASSWORD}
+      - N8N_DB_HOST=${N8N_DB_HOST}
+      - N8N_DB_PORT=${N8N_DB_PORT}
+    volumes:
+      - ./gmaps_downloads:/app/gmaps_downloads
     networks:
       - db_network
       - web_network

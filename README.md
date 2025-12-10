@@ -1,123 +1,148 @@
-# [Django Datta Able](https://app-generator.dev/product/datta-able/django/)
+# SaaS Dashboard
 
-**Open-source Django Starter** crafted on top of **[Datta Able](https://app-generator.dev/product/datta-able/)**, an open-source `Bootstrap` UI Kit released by [CodedThemes](https://app-generator.dev/agency/codedthemes/).
-The product is designed to deliver the best possible user experience with highly customizable, feature-rich pages. 
+Django-based dashboard for managing Google Maps leads, WhatsApp contacts, and AI-powered email outreach.
 
-- 👉 [Django Datta Able](https://app-generator.dev/product/datta-able/django/) - `Product Page`
-- 👉 [Django Datta Able](https://django-datta.onrender.com) - `LIVE Demo` 
-- 👉 [Django Datta Able](https://app-generator.dev/docs/products/django/datta-able/index.html) - `Documentation` (learn how to use the product) 
+## 🚀 Features
 
-<br />
+### Google Maps Lead Scraping
+- Integration with external GMaps scraper API
+- Automatic job polling and lead import
+- 342+ leads with full business data (phone, website, reviews, location)
 
-## `PROMO` Domains for sale
+### WhatsApp Contact Extraction
+- Extracts Turkish mobile numbers (905XX) as WhatsApp contacts
+- Generates chat IDs (`@c.us`) and JIDs (`@s.whatsapp.net`)
+- 145+ WhatsApp contacts extracted
 
-- 👉 **[AppSeed.us - $49k](https://appseed.us/)**
-- 👉 **[Admin-Dashboards.com - $15k](https://www.admin-dashboards.com/)**
-- 👉 **[UI-Themes.com - $5k](https://ui-themes.com/)**
-- 👉 **[Simpllo.com - $10k](https://www.simpllo.com/)**
-- 👉 **[123SiteBuilder.net - $5k](https://www.123sitebuilder.net/)**
+### Website Scraping
+- Scrapes business websites for emails and structured content
+- Extracts: emails, phone numbers, services, social links
+- AI-ready structured data format
 
-<br />
+### AI Email Templates
+- Rich text email templates linked to leads
+- Status workflow: `draft` → `ready` → `approved` → `sent`
+- Django signals for workflow automation
+- Full OpenAPI 3.1 schema for LLM integration
 
-## Features
+## 📡 API Endpoints
 
-- Simple, Easy-to-Extend codebase
-- [Datta Able](https://app-generator.dev/product/datta-able/) Design Integration 
-- [Bootstrap](https://app-generator.dev/docs/templates/bootstrap.html) CSS Styling 
-- Session-based Authentication, Password recovery
-- DB Persistence: SQLite (default), can be used with MySql, PgSql
-- Apps:
-  - [DEMO](https://django-datta.onrender.com/dynamic-dt/product/) **Dynamic DataTables** - generate server-side datatables without coding
-  - [DEMO](https://django-datta.onrender.com/api/product/) **Dynamic APIs** - Expose secure APIs without coding  
-  - [DEMO](https://django-datta.onrender.com/charts/) **Charts** - powered by ApexCharts 
-- [Django CLI Package](https://app-generator.dev/docs/developer-tools/django-cli/index.html)
-    - `Commit/rollback Git Changes`
-    - `Backup & restore DB`
-    - `Interact with Django Core`
-    - `Manage Environment`
-    - `Manage Dependencies`  
-- [Deployment](https://app-generator.dev/docs/deployment.html)
-  - Docker/Docker Compose Scripts 
-  - CI/CD for [Render](https://app-generator.dev/docs/deployment/render/index.html)
-- [Vite](https://app-generator.dev/docs/technologies/vite/index.html) for assets management 
+### OpenAPI Schema (for LLMs)
+| URL | Format | Purpose |
+|-----|--------|---------|
+| `/api/openapi.json` | JSON | **For AI agents** |
+| `/api/schema/swagger/` | HTML | Interactive docs |
+| `/api/schema/redoc/` | HTML | ReDoc documentation |
 
-<br />
+### AI Email Generation Workflow
+```
+GET  /gmaps-leads/api/leads/with-emails/           # Find leads ready for outreach
+GET  /gmaps-leads/api/leads/{id}/context/          # Get lead info for AI
+POST /gmaps-leads/api/leads/{id}/email-template/   # Submit AI-generated email
+PATCH /gmaps-leads/api/email-templates/{id}/status/ # Update status (triggers signals)
+```
 
-## [Documentation](https://app-generator.dev/docs/products/django/datta-able/index.html)
+### Lead Management
+```
+GET  /gmaps-leads/api/leads/                       # List all leads
+GET  /gmaps-leads/api/leads/{id}/                  # Get lead details
+GET  /gmaps-leads/api/jobs/                        # List scrape jobs
+POST /gmaps-leads/api/jobs/{id}/import_results/    # Import job results
+```
 
-- Understand the codebase structure
-- Prepare the environment
-- Setting Up the Database
-- Start the Project
-- Switch from SQLite to MySql or PgSql
-- Add a new model and migrate database
-- Enable `Dynamic Tables` for a new model
-- Enable `Dynamic API` for a new model
-- Deploy on Render
+## 🛠️ Management Commands
 
-![Django Datta Able - Open-Source Django Starter](https://user-images.githubusercontent.com/51070104/176118649-7233ffbc-6118-4f56-8cda-baa81d256877.png)
+```bash
+# Sync all jobs from external scraper API
+python manage.py sync_scraper_jobs --import-leads
 
-<br />
+# Poll pending jobs for completion
+python manage.py poll_scrape_jobs --min-age 600
 
-## Deploy on `Render`
+# Extract WhatsApp contacts from leads
+python manage.py extract_whatsapp_contacts --stats
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
+# Scrape websites for emails
+python manage.py scrape_lead_websites --limit 50 --delay 2
+```
 
-<br /> 
+## 🔧 Setup
 
-## [Datta Able PRO Version](https://app-generator.dev/product/datta-able-pro/django/)
+### Prerequisites
+- Python 3.10+
+- PostgreSQL (for n8n/evolution databases)
+- SQLite (for default Django database)
 
-> The premium version provides more features, priority on support, and is more often updated - [Live Demo](https://django-datta-pro.onrender.com/).
+### Installation
+```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate
 
-- Simple, Easy-to-Extend Codebase
-- [Datta Able](https://app-generator.dev/product/datta-able/) Design Integration 
-- Bootstrap Styling 
-- DB Persistence: SQLite (default), can be used with MySQL, PostgreSQL
-- Extended User Profiles
-- Authentication
-   - Session-based 
-   - OAuth GitHub, Google
-- Apps:
-  - [DEMO](https://django-datta-pro.onrender.com/dynamic-dt/product/) **Dynamic DataTables** - generate server-side datatables without coding  
-  - [DEMO](https://django-datta-pro.onrender.com/api/product/) **Dynamic APIs** - Expose secure APIs without coding  
-  - [DEMO](https://django-datta-pro.onrender.com/charts/) **Charts** - powered by ApexCharts 
-  - [DEMO](https://django-datta-pro.onrender.com/react-charts) **React Integration**
-  - **Media Files Manager** - empower users to manage and preview files with ease
-  - **Celery** (async tasks)
-- [Django CLI Package](https://app-generator.dev/docs/developer-tools/django-cli/index.html)
-    - `Commit/rollback Git Changes`
-    - `Backup & restore DB`
-    - `Interact with Django Core`
-    - `Manage Environment`
-    - `Manage Dependencies`  
-- [Deployment](https://app-generator.dev/docs/deployment.html)
-  - Docker/Docker Compose Scripts 
-  - CI/CD for [Render](https://app-generator.dev/docs/deployment/render/index.html)
-- [Vite](https://app-generator.dev/docs/technologies/vite/index.html) for assets management
- 
-![Datta Able PRO - Full-Stack Starter generated by AppSeed.](https://user-images.githubusercontent.com/51070104/170474361-a58da82b-fff9-4a59-81a8-7ab99f478f48.png)
+# Install dependencies
+pip install -r requirements.txt
 
-<br />
+# Run migrations
+python manage.py migrate
 
-## `Customize` with [Django App Generator](https://app-generator.dev/tools/django-generator/)
+# Create superuser
+python manage.py createsuperuser
 
-- Access the [App Generator](https://app-generator.dev/tools/django-generator/) page
-- Select the preferred design
-- (Optional) Design Database: edit models and fields
-- (Optional) Edit the fields for the extended user model
-- (Optional) Enable OAuth for GitHub
-- (Optional) Add Celery (async tasks)
-- (Optional) Enable Dynamic API Module
-- Docker Scripts
-- Render CI/Cd Scripts
+# Run server
+python manage.py runserver 0.0.0.0:8000
+```
 
-**The generated Django project is available as a ZIP Archive and also uploaded to GitHub.**
+### Environment Variables
+```env
+# Django
+DEBUG=True
+SECRET_KEY=your-secret-key
 
-![Django Generator - User Interface for choosing the Design](https://github.com/user-attachments/assets/b989c434-1c53-49ff-8dda-b46dbfc142ac) 
+# Google Maps Scraper
+GMAPS_SCRAPER_API_URL=https://gmaps.delilclinic.com
 
-![Django App Generator - User Interface for Edit the Extended User Model](https://github.com/user-attachments/assets/f1a5fb68-a5ba-49c9-a3ae-91716de09912) 
+# OpenAI (for SQL Explorer AI assistant)
+OPENAI_API_KEY=sk-...
 
-<br />
+# N8N Database (read-only mirror)
+N8N_DB_NAME=n8n
+N8N_DB_USER=postgres
+N8N_DB_PASSWORD=...
+N8N_DB_HOST=localhost
+N8N_DB_PORT=5432
 
----
-[Django Datta Able](https://app-generator.dev/product/datta-able/django/) - Open-Source **Django** Starter provided by [App Generator](https://app-generator.dev).
+# Evolution API Database (optional)
+EVO_DB_NAME=evolution
+EVO_DB_USER=postgres
+EVO_DB_PASSWORD=...
+EVO_DB_HOST=localhost
+EVO_DB_PORT=5432
+```
+
+## 📊 Admin Features
+
+Access at `/admin/`:
+
+- **Scrape Jobs**: Create, monitor, and import Google Maps scrape jobs
+- **Leads**: Filter by phone type (WhatsApp/Local), website presence, emails
+- **WhatsApp Contacts**: Manage extracted contacts
+- **Lead Websites**: View scraped website data and emails
+- **Email Templates**: Review and approve AI-generated emails
+
+### Admin Filters
+- 📱 Phone Type: WhatsApp (905XX), Local Landline (902XX), Other, None
+- 🌐 Website: Has Website / No Website
+- 📧 Emails: Has Emails / No Emails
+- ✅ WhatsApp Extracted: Yes / No
+
+## 🔌 Integrations
+
+### SQL Explorer
+Browse n8n and Evolution API databases at `/explorer/`
+
+### Pengaa Flow
+React-based workflow editor at `/static/pengaa-flow/`
+
+## 📝 License
+
+MIT

@@ -1,20 +1,34 @@
-FROM python:3.12
+FROM python:3.12-slim
 
-# set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
+# Set work directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
 COPY requirements.txt .
-
-# install python dependencies
 RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy project files
 COPY . .
 
-# Running Migrations
-RUN python manage.py makemigrations
-RUN python manage.py migrate
+# Create directories for downloads
+RUN mkdir -p /app/gmaps_downloads
 
-# gunicorn
-CMD ["gunicorn", "--config", "gunicorn-cfg.py", "config.wsgi"]
+# Collect static files (doesn't need DB)
+RUN python manage.py collectstatic --noinput --clear || true
+
+# Expose port
+EXPOSE 8000
+
+# Run migrations at container START (not build), then start gunicorn
+CMD ["sh", "-c", "python manage.py migrate --noinput && gunicorn --config gunicorn-cfg.py config.wsgi"]
