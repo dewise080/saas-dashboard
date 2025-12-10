@@ -27,8 +27,8 @@ RUN mkdir -p /app/gmaps_downloads
 # Collect static files (doesn't need DB)
 RUN python manage.py collectstatic --noinput --clear || true
 
-# Expose port
-EXPOSE 8000
+# Expose port (CapRover expects port 80)
+EXPOSE 80
 
 # Run migrations at container START (not build), then start gunicorn
 CMD ["sh", "-c", "python manage.py migrate --noinput && gunicorn --config gunicorn-cfg.py config.wsgi"]
