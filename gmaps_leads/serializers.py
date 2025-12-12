@@ -208,7 +208,9 @@ class CustomizedContactCreateSerializer(serializers.ModelSerializer):
             'name', 'template_type',
             'recipient_email', 'recipient_name',
             'mark_ready',
+            'status',
         ]
+        read_only_fields = ['status']
     
     def create(self, validated_data):
         mark_ready = validated_data.pop('mark_ready', False)
@@ -260,9 +262,10 @@ class CustomizedContactSerializer(serializers.ModelSerializer):
             'name', 'template_type',
             'subject', 'body_html',
             'recipient_email', 'recipient_name',
+            'status',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'status']
 
 
 class CustomizedContactListSerializer(serializers.ModelSerializer):
@@ -271,7 +274,7 @@ class CustomizedContactListSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomizedContact
         fields = [
-            'id', 'lead', 'lead_title', 'subject', 'template_type', 'created_at'
+            'id', 'lead', 'lead_title', 'subject', 'template_type', 'status', 'created_at'
         ]
 
 

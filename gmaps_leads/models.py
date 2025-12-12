@@ -414,6 +414,14 @@ class CustomizedContact(models.Model):
     The AI agent creates the content and marks it ready to send. CONTACT INFORMATION OF THE SENDER WILL BE ADDED AUTOMATICALLY; this model is only for the specialized content and subject.
     """
 
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('ready', 'Ready'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('sent', 'Sent'),
+    ]
+
     TEMPLATE_TYPE_CHOICES = [
         ('outreach', 'Cold Outreach'),
         ('followup', 'Follow-up'),
@@ -428,6 +436,14 @@ class CustomizedContact(models.Model):
     # Template metadata
     name = models.CharField(max_length=255, blank=True, null=True, help_text="Content name/identifier")
     template_type = models.CharField(max_length=20, choices=TEMPLATE_TYPE_CHOICES, default='outreach')
+
+    # Status of the contact content
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='draft',
+        help_text="Status of the contact content"
+    )
 
     # Specialized content (rich text HTML supported)
     subject = models.CharField(max_length=500, help_text="Subject line for the contact content")

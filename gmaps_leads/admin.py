@@ -854,6 +854,12 @@ class HasTargetEmailFilter(admin.SimpleListFilter):
 
 @admin.register(CustomizedContact)
 class CustomizedContactAdmin(admin.ModelAdmin):
+    list_display = [
+        'lead', 'subject', 'template_type', 'status', 'recipient_email', 'created_at', 'updated_at'
+    ]
+    list_filter = ['status', 'template_type', 'created_at', 'updated_at']
+    search_fields = ['subject', 'body_html', 'recipient_email', 'lead__title']
+    readonly_fields = ['created_at', 'updated_at']
     list_display = ['lead', 'subject', 'template_type']
     list_filter = [CustomizedContactTypeFilter]
     search_fields = ['lead__title', 'subject', 'body_html', 'recipient_email']
