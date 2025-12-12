@@ -216,9 +216,7 @@ class EmailTemplateCreateSerializer(serializers.ModelSerializer):
             # Optional sender info
             'sender_name', 'sender_email', 'reply_to',
             
-            # AI metadata
-            'ai_model', 'ai_prompt_used', 'ai_generation_time', 'ai_tokens_used',
-            'is_personalized', 'personalization_score', 'variables',
+            # (AI metadata fields removed)
             
             # Control
             'mark_ready',
@@ -294,9 +292,7 @@ class EmailTemplateSerializer(serializers.ModelSerializer):
             # Status
             'status', 'status_message', 'is_ready_to_send',
             
-            # AI metadata
-            'ai_model', 'ai_prompt_used', 'ai_generation_time', 'ai_tokens_used',
-            'is_personalized', 'personalization_score', 'variables',
+            # (AI metadata fields removed)
             
             # Tracking
             'sent_at', 'opened_at', 'clicked_at',
@@ -316,7 +312,7 @@ class EmailTemplateListSerializer(serializers.ModelSerializer):
         model = EmailTemplate
         fields = [
             'id', 'lead', 'lead_title', 'subject', 'template_type',
-            'status', 'target_email', 'is_personalized', 'created_at'
+            'status', 'target_email', 'created_at'
         ]
 
 
