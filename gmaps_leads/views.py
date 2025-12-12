@@ -167,7 +167,7 @@ class GmapsLeadViewSet(viewsets.ReadOnlyModelViewSet):
         if has_website == 'yes':
             qs = qs.exclude(website__isnull=True).exclude(website='')
         elif has_website == 'no':
-            qs = qs.filter(models.Q(website__isnull=True) | models.Q(website=''))
+            qs = qs.filter(Q(website__isnull=True) | Q(website=''))
 
         # Filter by WhatsApp contact extraction
         has_wa = req.query_params.get('has_whatsapp_contact')
@@ -180,11 +180,11 @@ class GmapsLeadViewSet(viewsets.ReadOnlyModelViewSet):
         search = req.query_params.get('search')
         if search:
             qs = qs.filter(
-                models.Q(title__icontains=search) |
-                models.Q(address__icontains=search) |
-                models.Q(phone__icontains=search) |
-                models.Q(website__icontains=search) |
-                models.Q(category__icontains=search)
+                Q(title__icontains=search) |
+                Q(address__icontains=search) |
+                Q(phone__icontains=search) |
+                Q(website__icontains=search) |
+                Q(category__icontains=search)
             )
 
         limit = req.query_params.get('limit')
@@ -468,9 +468,6 @@ class LeadEmailTemplateAPIView(APIView):
                     'body_plain': 'Hello {{recipient_name}},\n\nI noticed your business...',
                     'template_type': 'outreach',
                     'mark_ready': True,
-                    'is_personalized': True,
-                    'ai_model': 'gpt-4',
-                    'ai_generation_time': 2.5,
                 },
                 request_only=True,
             )
