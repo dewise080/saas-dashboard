@@ -136,30 +136,65 @@ class GmapsLeadViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [AllowAny]
     
     def get_queryset(self):
-        """Filter leads by user's jobs."""
+        """Filter leads by user's jobs and admin-style filters."""
         qs = GmapsLead.objects.all()
-        if self.request.user.is_authenticated:
-            qs = qs.filter(job__created_by=self.request.user)
-        
+        req = self.request
+        if req.user.is_authenticated:
+            qs = qs.filter(job__created_by=req.user)
+
         # Filter by job
-        job_id = self.request.query_params.get('job')
+        job_id = req.query_params.get('job')
         if job_id:
             qs = qs.filter(job_id=job_id)
-        
+
         # Filter by category
-        category = self.request.query_params.get('category')
+        category = req.query_params.get('category')
         if category:
             qs = qs.filter(category__icontains=category)
-        
+
         # Filter by min rating
-        min_rating = self.request.query_params.get('min_rating')
+        min_rating = req.query_params.get('min_rating')
         if min_rating:
             qs = qs.filter(review_rating__gte=float(min_rating))
-        limit = self.request.query_params.get('limit')
+
+        # Filter by phone type
+        phone_type = req.query_params.get('phone_type')
+        if phone_type in {'whatsapp', 'local', 'other', 'none'}:
+            qs = [lead for lead in qs if getattr(lead, 'phone_type', None) == phone_type]
+
+        # Filter by website presence
+        has_website = req.query_params.get('has_website')
+        if has_website == 'yes':
+            qs = qs.exclude(website__isnull=True).exclude(website='')
+        elif has_website == 'no':
+            qs = qs.filter(models.Q(website__isnull=True) | models.Q(website=''))
+
+        # Filter by WhatsApp contact extraction
+        has_wa = req.query_params.get('has_whatsapp_contact')
+        if has_wa == 'yes':
+            qs = qs.filter(whatsapp_contact__isnull=False)
+        elif has_wa == 'no':
+            qs = qs.filter(whatsapp_contact__isnull=True)
+
+        # Search (title, address, phone, website, category)
+        search = req.query_params.get('search')
+        if search:
+            qs = qs.filter(
+                models.Q(title__icontains=search) |
+                models.Q(address__icontains=search) |
+                models.Q(phone__icontains=search) |
+                models.Q(website__icontains=search) |
+                models.Q(category__icontains=search)
+            )
+
+        limit = req.query_params.get('limit')
         try:
             limit_val = min(int(limit), 200) if limit else 50
         except Exception:
             limit_val = 50
+        # If qs is a list (from phone_type filter), slice directly
+        if isinstance(qs, list):
+            return qs[:limit_val]
         return qs[:limit_val]
     
     def get_serializer_class(self):

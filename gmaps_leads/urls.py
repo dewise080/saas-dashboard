@@ -8,6 +8,10 @@ urlpatterns = [
     path('api/leads/contactable/',
          views.ContactableLeadsAPIView.as_view(),
          name='api-leads-contactable'),
+    # AI Integration: Lead context for personalization
+    path('api/leads/<int:lead_id>/context/',
+         views.LeadContextAPIView.as_view(),
+         name='api-lead-context'),
     path('api/email-templates/',
          views.EmailTemplateListAPIView.as_view(),
          name='api-email-templates'),

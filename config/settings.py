@@ -335,3 +335,5 @@ CORS_ALLOW_CREDENTIALS = True  # Allow cookies/session auth
 ########################################
 GMAPS_SCRAPER_API_URL = os.getenv('GMAPS_SCRAPER_API_URL', 'http://localhost:8080')
 GMAPS_CSV_DOWNLOAD_DIR = os.path.join(BASE_DIR, 'gmaps_downloads')  # Directory for downloaded CSV files
+
+
