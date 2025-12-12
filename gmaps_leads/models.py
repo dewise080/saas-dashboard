@@ -409,6 +409,73 @@ class LeadWebsite(models.Model):
 class EmailTemplate(models.Model):
     """
     Model to store customized email templates for each lead.
+    ...existing code...
+    """
+    # ...existing fields and Meta...
+
+    def html_to_whatsapp(self, html):
+        """
+        Convert HTML to WhatsApp-friendly formatting:
+        - <b>, <strong> → **bold**
+        - <i>, <em> → _italic_
+        - <u> → _underline_ (WhatsApp does not support underline, so use _)
+        - <br>, <p> → newlines
+        - <a href> → text (url)
+        - <ul>, <ol>, <li> → bullet points
+        - Remove other tags
+        """
+        import re
+        from html import unescape
+
+        # Replace <br> and <p> with newlines
+        html = re.sub(r'<\s*br\s*/?>', '\n', html, flags=re.I)
+        html = re.sub(r'<\s*/?p\s*>', '\n', html, flags=re.I)
+
+        # Bold
+        html = re.sub(r'<\s*(b|strong)\s*>', '**', html, flags=re.I)
+        html = re.sub(r'<\s*/(b|strong)\s*>', '**', html, flags=re.I)
+
+        # Italic
+        html = re.sub(r'<\s*(i|em)\s*>', '_', html, flags=re.I)
+        html = re.sub(r'<\s*/(i|em)\s*>', '_', html, flags=re.I)
+
+        # Underline (WhatsApp does not support, use _)
+        html = re.sub(r'<\s*u\s*>', '_', html, flags=re.I)
+        html = re.sub(r'<\s*/u\s*>', '_', html, flags=re.I)
+
+        # Links: <a href="url">text</a> → text (url)
+        def link_repl(match):
+            url = match.group(1)
+            text = match.group(2)
+            return f'{text} ({url})'
+        html = re.sub(r'<a [^>]*href=["\\\']([^"\\\']+)["\\\'][^>]*>(.*?)</a>', link_repl, html, flags=re.I|re.S)
+
+        # Lists
+        html = re.sub(r'<\s*ul\s*>', '', html, flags=re.I)
+        html = re.sub(r'<\s*/ul\s*>', '', html, flags=re.I)
+        html = re.sub(r'<\s*ol\s*>', '', html, flags=re.I)
+        html = re.sub(r'<\s*/ol\s*>', '', html, flags=re.I)
+        html = re.sub(r'<\s*li\s*>', '\n• ', html, flags=re.I)
+        html = re.sub(r'<\s*/li\s*>', '', html, flags=re.I)
+
+        # Remove all other tags
+        html = re.sub(r'<[^>]+>', '', html)
+
+        # Unescape HTML entities
+        text = unescape(html)
+
+        # Collapse multiple newlines
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = text.strip()
+        return text
+
+    def save(self, *args, **kwargs):
+        # Auto-generate body_plain from body_html if body_html is set
+        if self.body_html:
+            self.body_plain = self.html_to_whatsapp(self.body_html)
+        super().save(*args, **kwargs)
+    """
+    Model to store customized email templates for each lead.
     
     Designed for AI-driven email generation workflow:
     1. AI fetches lead context via GET /api/leads/{id}/context/
@@ -463,18 +530,6 @@ class EmailTemplate(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     status_message = models.TextField(blank=True, null=True, help_text="Status details/error message")
     
-    # AI generation metadata
-    ai_model = models.CharField(max_length=100, blank=True, null=True, help_text="AI model used for generation")
-    ai_prompt_used = models.TextField(blank=True, null=True, help_text="Prompt used to generate this email")
-    ai_generation_time = models.FloatField(blank=True, null=True, help_text="Time taken to generate (seconds)")
-    ai_tokens_used = models.IntegerField(blank=True, null=True, help_text="Tokens used in generation")
-    
-    # Personalization variables (for future template engine)
-    variables = models.JSONField(default=dict, help_text="Variables used in template: {var_name: value}")
-    
-    # Tracking
-    is_personalized = models.BooleanField(default=False, help_text="Whether AI personalized this for the specific lead")
-    personalization_score = models.FloatField(blank=True, null=True, help_text="AI confidence score 0-1")
     
     # Send tracking
     sent_at = models.DateTimeField(blank=True, null=True, help_text="When email was sent")

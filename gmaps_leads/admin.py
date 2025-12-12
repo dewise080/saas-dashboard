@@ -875,17 +875,17 @@ class HasTargetEmailFilter(admin.SimpleListFilter):
 class EmailTemplateAdmin(admin.ModelAdmin):
     list_display = [
         'lead_name', 'subject_preview', 'template_type_badge', 'status_badge',
-        'target_email_display', 'is_personalized_badge', 'created_at_display'
+        'target_email_display', 'created_at_display'
     ]
     list_filter = [
         EmailTemplateStatusFilter, EmailTemplateTypeFilter, 
-        HasTargetEmailFilter, 'is_personalized', 'created_at'
+        HasTargetEmailFilter, 'created_at'
     ]
     search_fields = ['lead__title', 'subject', 'body_html', 'recipient_email']
     raw_id_fields = ['lead', 'created_by']
     readonly_fields = [
         'created_at', 'updated_at', 'sent_at', 'opened_at', 'clicked_at',
-        'target_email', 'lead_context_preview'
+        'target_email', 'lead_context_preview', 'body_html_preview', 'body_plain_preview'
     ]
     date_hierarchy = 'created_at'
     
@@ -894,7 +894,7 @@ class EmailTemplateAdmin(admin.ModelAdmin):
             'fields': ('lead', 'name', 'template_type', 'lead_context_preview')
         }),
         ('Email Content', {
-            'fields': ('subject', 'body_html', 'body_plain', 'body_html_preview', 'body_plain_preview')
+            'fields': ('subject', 'body_html', 'body_plain')
         }),
         ('Recipient', {
             'fields': ('recipient_email', 'recipient_name', 'target_email')
@@ -905,14 +905,6 @@ class EmailTemplateAdmin(admin.ModelAdmin):
         }),
         ('Status', {
             'fields': ('status', 'status_message')
-        }),
-        ('AI Generation Metadata', {
-            'fields': ('ai_model', 'ai_prompt_used', 'ai_generation_time', 'ai_tokens_used'),
-            'classes': ('collapse',)
-        }),
-        ('Personalization', {
-            'fields': ('is_personalized', 'personalization_score', 'variables'),
-            'classes': ('collapse',)
         }),
         ('Tracking', {
             'fields': ('sent_at', 'opened_at', 'clicked_at'),
@@ -951,8 +943,8 @@ class EmailTemplateAdmin(admin.ModelAdmin):
     }
     
     def lead_name(self, obj):
-        """Show lead business name with link."""
-        url = reverse('admin:gmaps_leads_gmapslead_change', args=[obj.lead.pk])
+        """Show business name with link to this EmailTemplate change page."""
+        url = reverse('admin:gmaps_leads_emailtemplate_change', args=[obj.pk])
         return format_html('<a href="{}">{}</a>', url, obj.lead.title[:40])
     lead_name.short_description = 'Business'
     lead_name.admin_order_field = 'lead__title'
@@ -1012,13 +1004,6 @@ class EmailTemplateAdmin(admin.ModelAdmin):
         return format_html('<span style="color: #999;">No email</span>')
     target_email_display.short_description = 'Target Email'
     
-    def is_personalized_badge(self, obj):
-        """Show personalization status."""
-        if obj.is_personalized:
-            score = f' ({obj.personalization_score:.0%})' if obj.personalization_score else ''
-            return format_html('<span style="color: green;">✓ AI{}</span>', score)
-        return format_html('<span style="color: #999;">–</span>')
-    is_personalized_badge.short_description = 'Personalized'
     
     def created_at_display(self, obj):
         """Show formatted creation date."""
