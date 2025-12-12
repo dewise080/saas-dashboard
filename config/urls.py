@@ -21,16 +21,21 @@ from rest_framework.renderers import JSONOpenAPIRenderer
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from drf_spectacular.renderers import OpenApiJsonRenderer
 
+
 urlpatterns = [
     path("", include(("accounts_plus.urls", "accounts_plus"), namespace="accounts_plus")),
     path('', include(("apps.pages.urls", "apps.pages"), namespace="apps.pages")),
     path('', include('apps.pages.dashboard_urls')),
     path("n8n/", include("n8n_mirror.urls")),
     path("explorer/", include("explorer.urls")),  # SQL Explorer
-    path("gmaps-leads/", include("gmaps_leads.urls")),  # Google Maps Leads
+    # Google Maps Leads (UI only, API is unified below)
+    path("gmaps-leads/", include(("gmaps_leads.urls", "gmaps_leads"), namespace="gmaps_leads")),
     path("", include('admin_datta.urls')),
     path("admin/", admin.site.urls),
-    
+
+    # Unified API schema: all gmaps_leads API endpoints under /api/gmaps-leads/
+    path("api/gmaps-leads/", include(("gmaps_leads.api_urls", "gmaps_leads_api"), namespace="gmaps_leads_api")),
+
     # OpenAPI 3.1 Schema (for AI/LLM integration)
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),  # YAML format
     path('api/openapi.json', SpectacularAPIView.as_view(renderer_classes=[OpenApiJsonRenderer]), name='schema-json'),  # JSON for LLMs

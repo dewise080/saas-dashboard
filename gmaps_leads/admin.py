@@ -8,7 +8,7 @@ from django.db import models
 from django.db.models import Q
 from django import forms
 from ckeditor.widgets import CKEditorWidget
-from .models import ScrapeJob, GmapsLead, WhatsAppContact, LeadWebsite, EmailTemplate
+from .models import ScrapeJob, GmapsLead, WhatsAppContact, LeadWebsite, CustomizedContact
 from .services import create_scrape_job, refresh_job_status, import_job_results, GmapsScraperService
 
 
@@ -801,33 +801,15 @@ class LeadWebsiteAdmin(admin.ModelAdmin):
 # Email Template Admin
 # =============================================================================
 
-class EmailTemplateStatusFilter(admin.SimpleListFilter):
-    """Filter email templates by status."""
-    title = 'Status'
-    parameter_name = 'status'
 
-    def lookups(self, request, model_admin):
-        return (
-            ('draft', '📝 Draft'),
-            ('generating', '⏳ AI Generating'),
-            ('ready', '✅ Ready to Send'),
-            ('approved', '👍 Approved'),
-            ('sent', '📧 Sent'),
-            ('failed', '❌ Failed'),
-            ('rejected', '🚫 Rejected'),
-        )
-
-    def queryset(self, request, queryset):
-        if self.value():
-            return queryset.filter(status=self.value())
-        return queryset
+# No status filter for CustomizedContact
 
 
-class EmailTemplateTypeFilter(admin.SimpleListFilter):
-    """Filter email templates by type."""
-    title = 'Template Type'
+
+
+class CustomizedContactTypeFilter(admin.SimpleListFilter):
+    title = 'Content Type'
     parameter_name = 'template_type'
-
     def lookups(self, request, model_admin):
         return (
             ('outreach', '📤 Cold Outreach'),
@@ -836,7 +818,6 @@ class EmailTemplateTypeFilter(admin.SimpleListFilter):
             ('proposal', '📋 Business Proposal'),
             ('custom', '✏️ Custom'),
         )
-
     def queryset(self, request, queryset):
         if self.value():
             return queryset.filter(template_type=self.value())
@@ -871,138 +852,25 @@ class HasTargetEmailFilter(admin.SimpleListFilter):
         return queryset
 
 
-@admin.register(EmailTemplate)
-class EmailTemplateAdmin(admin.ModelAdmin):
-    list_display = [
-        'lead_name', 'subject_preview', 'template_type_badge', 'status_badge',
-        'target_email_display', 'created_at_display'
-    ]
-    list_filter = [
-        EmailTemplateStatusFilter, EmailTemplateTypeFilter, 
-        HasTargetEmailFilter, 'created_at'
-    ]
+@admin.register(CustomizedContact)
+class CustomizedContactAdmin(admin.ModelAdmin):
+    list_display = ['lead', 'subject', 'template_type']
+    list_filter = [CustomizedContactTypeFilter]
     search_fields = ['lead__title', 'subject', 'body_html', 'recipient_email']
-    raw_id_fields = ['lead', 'created_by']
-    readonly_fields = [
-        'created_at', 'updated_at', 'sent_at', 'opened_at', 'clicked_at',
-        'target_email', 'lead_context_preview', 'body_html_preview', 'body_plain_preview'
-    ]
-    date_hierarchy = 'created_at'
-    
+    raw_id_fields = ['lead']
+    readonly_fields = []
     fieldsets = (
-        ('Lead & Template Info', {
-            'fields': ('lead', 'name', 'template_type', 'lead_context_preview')
+        ('Lead & Content Info', {
+            'fields': ('lead', 'name', 'template_type')
         }),
-        ('Email Content', {
-            'fields': ('subject', 'body_html', 'body_plain')
+        ('Content', {
+            'fields': ('subject', 'body_html')
         }),
         ('Recipient', {
-            'fields': ('recipient_email', 'recipient_name', 'target_email')
-        }),
-        ('Sender', {
-            'fields': ('sender_name', 'sender_email', 'reply_to'),
-            'classes': ('collapse',)
-        }),
-        ('Status', {
-            'fields': ('status', 'status_message')
-        }),
-        ('Tracking', {
-            'fields': ('sent_at', 'opened_at', 'clicked_at'),
-            'classes': ('collapse',)
-        }),
-        ('Metadata', {
-            'fields': ('created_by', 'created_at', 'updated_at'),
-            'classes': ('collapse',)
+            'fields': ('recipient_email', 'recipient_name')
         }),
     )
-    
-    actions = [
-        'mark_as_ready', 'mark_as_approved', 'mark_as_draft', 
-        'mark_as_rejected', 'export_for_sending'
-    ]
 
-    def target_email_display(self, obj):
-        return obj.target_email or obj.recipient_email or "-"
-    target_email_display.short_description = "Target Email"
-
-    def body_html_preview(self, obj):
-        if obj.body_html:
-            return format_html('<div style="max-width:600px;white-space:pre-wrap;">{}</div>', obj.body_html[:400])
-        return "-"
-    body_html_preview.short_description = "HTML Preview"
-
-    def body_plain_preview(self, obj):
-        if obj.body_plain:
-            text = (obj.body_plain[:400] + '...') if len(obj.body_plain) > 400 else obj.body_plain
-            return format_html('<pre style="max-width:600px;white-space:pre-wrap;">{}</pre>', text)
-        return "-"
-    body_plain_preview.short_description = "Plain Preview"
-
-    formfield_overrides = {
-        models.TextField: {'widget': CKEditorWidget(config_name='default')},
-    }
-    
-    def lead_name(self, obj):
-        """Show business name with link to this EmailTemplate change page."""
-        url = reverse('admin:gmaps_leads_emailtemplate_change', args=[obj.pk])
-        return format_html('<a href="{}">{}</a>', url, obj.lead.title[:40])
-    lead_name.short_description = 'Business'
-    lead_name.admin_order_field = 'lead__title'
-    
-    def subject_preview(self, obj):
-        """Show truncated subject."""
-        return obj.subject[:50] + ('...' if len(obj.subject) > 50 else '')
-    subject_preview.short_description = 'Subject'
-    
-    def template_type_badge(self, obj):
-        """Show template type as badge."""
-        icons = {
-            'outreach': '📤',
-            'followup': '🔄',
-            'introduction': '👋',
-            'proposal': '📋',
-            'custom': '✏️',
-        }
-        icon = icons.get(obj.template_type, '📧')
-        return format_html('{} {}', icon, obj.get_template_type_display())
-    template_type_badge.short_description = 'Type'
-    
-    def status_badge(self, obj):
-        """Show status with colored badge."""
-        colors = {
-            'draft': '#6c757d',
-            'generating': '#ffc107',
-            'ready': '#17a2b8',
-            'approved': '#28a745',
-            'sent': '#007bff',
-            'failed': '#dc3545',
-            'rejected': '#343a40',
-        }
-        icons = {
-            'draft': '📝',
-            'generating': '⏳',
-            'ready': '✅',
-            'approved': '👍',
-            'sent': '📧',
-            'failed': '❌',
-            'rejected': '🚫',
-        }
-        color = colors.get(obj.status, '#6c757d')
-        icon = icons.get(obj.status, '📋')
-        return format_html(
-            '<span style="background-color: {}; color: white; padding: 2px 8px; border-radius: 3px;">{} {}</span>',
-            color, icon, obj.get_status_display()
-        )
-    status_badge.short_description = 'Status'
-    status_badge.admin_order_field = 'status'
-    
-    def target_email_display(self, obj):
-        """Show target email."""
-        email = obj.target_email
-        if email:
-            return format_html('<a href="mailto:{}">{}</a>', email, email)
-        return format_html('<span style="color: #999;">No email</span>')
-    target_email_display.short_description = 'Target Email'
     
     
     def created_at_display(self, obj):

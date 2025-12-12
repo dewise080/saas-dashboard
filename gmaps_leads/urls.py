@@ -1,31 +1,11 @@
-from django.urls import path
+from django.urls import include, path
+
 from . import views
 
 app_name = 'gmaps_leads'
 
 urlpatterns = [
-    # Minimal API: contactable leads + email template CRUD
-    path('api/leads/contactable/',
-         views.ContactableLeadsAPIView.as_view(),
-         name='api-leads-contactable'),
-    # AI Integration: Lead context for personalization
-    path('api/leads/<int:lead_id>/context/',
-         views.LeadContextAPIView.as_view(),
-         name='api-lead-context'),
-    # AI Integration: Email template CRUD for a specific lead
-    path('api/leads/<int:lead_id>/email-template/',
-         views.LeadEmailTemplateAPIView.as_view(),
-         name='api-lead-email-template'),
-    path('api/email-templates/',
-         views.EmailTemplateListAPIView.as_view(),
-         name='api-email-templates'),
-    path('api/email-templates/<int:template_id>/',
-         views.EmailTemplateAPIView.as_view(),
-         name='api-email-template-detail'),
-    path('api/email-templates/<int:template_id>/status/',
-         views.EmailTemplateStatusAPIView.as_view(),
-         name='api-email-template-status'),
-    
+    # API endpoints, exposed under /gmaps-leads/api/ when this URLConf is included
     # ==========================================================================
     # Template views - Jobs
     # ==========================================================================

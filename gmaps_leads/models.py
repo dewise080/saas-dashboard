@@ -77,7 +77,7 @@ class ScrapeJob(models.Model):
             return f"{int(seconds // 60)}m"
         else:
             return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m"
-    
+            # def html_to_whatsapp(self, html):
     @property
     def is_ready_to_poll(self):
         """Check if job is old enough to poll (at least 3 minutes)."""
@@ -406,12 +406,45 @@ class LeadWebsite(models.Model):
         }
 
 
-class EmailTemplate(models.Model):
+
+class CustomizedContact(models.Model):
     """
-    Model to store customized email templates for each lead.
-    ...existing code...
+    Model to store AI-generated customized contact content for each lead.
+    This model is for specialized content (e.g., outreach, proposals, etc.) in HTML format.
+    The AI agent creates the content and marks it ready to send. CONTACT INFORMATION OF THE SENDER WILL BE ADDED AUTOMATICALLY; this model is only for the specialized content and subject.
     """
-    # ...existing fields and Meta...
+
+    TEMPLATE_TYPE_CHOICES = [
+        ('outreach', 'Cold Outreach'),
+        ('followup', 'Follow-up'),
+        ('introduction', 'Introduction'),
+        ('proposal', 'Business Proposal'),
+        ('custom', 'Custom'),
+    ]
+
+    # Link to lead
+    lead = models.ForeignKey(GmapsLead, on_delete=models.CASCADE, related_name='customized_contacts')
+
+    # Template metadata
+    name = models.CharField(max_length=255, blank=True, null=True, help_text="Content name/identifier")
+    template_type = models.CharField(max_length=20, choices=TEMPLATE_TYPE_CHOICES, default='outreach')
+
+    # Specialized content (rich text HTML supported)
+    subject = models.CharField(max_length=500, help_text="Subject line for the contact content")
+    body_html = models.TextField(help_text="Specialized content in HTML format (rich text). CONTACT INFORMATION OF THE SENDER WILL BE ADDED AUTOMATICALLY.")
+    body_plain = models.TextField(blank=True, null=True, help_text="Plain text version of content (auto-generated, not exposed via API)")
+
+    # Recipient info (can override lead's email)
+    recipient_email = models.EmailField(blank=True, null=True, help_text="Target email (defaults to lead's email)")
+    recipient_name = models.CharField(max_length=255, blank=True, null=True, help_text="Recipient name for personalization")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def is_ready(self) -> bool:
+        """Return True if this contact is marked as ready."""
+        return getattr(self, 'status', None) == 'ready'
 
     def html_to_whatsapp(self, html):
         """
@@ -474,137 +507,11 @@ class EmailTemplate(models.Model):
         if self.body_html:
             self.body_plain = self.html_to_whatsapp(self.body_html)
         super().save(*args, **kwargs)
-    """
-    Model to store customized email templates for each lead.
-    
-    Designed for AI-driven email generation workflow:
-    1. AI fetches lead context via GET /api/leads/{id}/context/
-    2. AI generates personalized email content
-    3. AI posts to POST /api/leads/{id}/email-template/
-    4. Status changes to 'ready' - signal emitted
-    5. Human reviews and sends (or automated sending later)
-    
-    Supports rich text (HTML) for professional email formatting.
-    """
-    
-    STATUS_CHOICES = [
-        ('draft', 'Draft'),
-        ('generating', 'AI Generating'),
-        ('ready', 'Ready to Send'),
-        ('approved', 'Approved'),
-        ('sent', 'Sent'),
-        ('failed', 'Failed'),
-        ('rejected', 'Rejected'),
-    ]
-    
-    TEMPLATE_TYPE_CHOICES = [
-        ('outreach', 'Cold Outreach'),
-        ('followup', 'Follow-up'),
-        ('introduction', 'Introduction'),
-        ('proposal', 'Business Proposal'),
-        ('custom', 'Custom'),
-    ]
-    
-    # Link to lead
-    lead = models.ForeignKey(GmapsLead, on_delete=models.CASCADE, related_name='email_templates')
-    
-    # Template metadata
-    name = models.CharField(max_length=255, blank=True, null=True, help_text="Template name/identifier")
-    template_type = models.CharField(max_length=20, choices=TEMPLATE_TYPE_CHOICES, default='outreach')
-    
-    # Email content (rich text HTML supported)
-    subject = models.CharField(max_length=500, help_text="Email subject line")
-    body_html = models.TextField(help_text="Email body in HTML format (rich text)")
-    body_plain = models.TextField(blank=True, null=True, help_text="Plain text version of email body")
-    
-    # Recipient info (can override lead's email)
-    recipient_email = models.EmailField(blank=True, null=True, help_text="Target email (defaults to lead's email)")
-    recipient_name = models.CharField(max_length=255, blank=True, null=True, help_text="Recipient name for personalization")
-    
-    # Sender info
-    sender_name = models.CharField(max_length=255, blank=True, null=True, help_text="From name")
-    sender_email = models.EmailField(blank=True, null=True, help_text="From email")
-    reply_to = models.EmailField(blank=True, null=True, help_text="Reply-to email")
-    
-    # Status tracking
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
-    status_message = models.TextField(blank=True, null=True, help_text="Status details/error message")
-    
-    
-    # Send tracking
-    sent_at = models.DateTimeField(blank=True, null=True, help_text="When email was sent")
-    opened_at = models.DateTimeField(blank=True, null=True, help_text="When email was opened (if tracked)")
-    clicked_at = models.DateTimeField(blank=True, null=True, help_text="When link was clicked (if tracked)")
-    
-    # Ownership
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='email_templates')
-    
-    # Timestamps
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "Email Template"
-        verbose_name_plural = "Email Templates"
-        ordering = ['-created_at']
-        indexes = [
-            models.Index(fields=['status']),
-            models.Index(fields=['template_type']),
-            models.Index(fields=['lead', 'status']),
-        ]
+        verbose_name = "Customized Contact"
+        verbose_name_plural = "Customized Contacts"
+        ordering = ['-id']
 
     def __str__(self):
         return f"{self.lead.title} - {self.subject[:50]}"
-    
-    @property
-    def is_ready_to_send(self):
-        """Check if template is ready for sending."""
-        return self.status in ['ready', 'approved']
-    
-    @property
-    def target_email(self):
-        """Get the email address to send to."""
-        if self.recipient_email:
-            return self.recipient_email
-        # Try to get from lead's website data
-        if hasattr(self.lead, 'website_data') and self.lead.website_data and self.lead.website_data.emails:
-            return self.lead.website_data.emails[0]
-        # Fall back to lead's emails field
-        if self.lead.emails:
-            try:
-                import json
-                emails = json.loads(self.lead.emails) if isinstance(self.lead.emails, str) else self.lead.emails
-                if emails:
-                    return emails[0] if isinstance(emails, list) else emails
-            except:
-                pass
-        return None
-    
-    def mark_ready(self):
-        """Mark template as ready to send and trigger signal."""
-        self.status = 'ready'
-        self.save()
-    
-    def mark_sent(self):
-        """Mark template as sent."""
-        self.status = 'sent'
-        self.sent_at = timezone.now()
-        self.save()
-    
-    def to_api_response(self) -> dict:
-        """Return data formatted for API response."""
-        return {
-            'id': self.id,
-            'lead_id': self.lead_id,
-            'business_name': self.lead.title,
-            'template_type': self.template_type,
-            'subject': self.subject,
-            'body_html': self.body_html,
-            'body_plain': self.body_plain,
-            'recipient_email': self.target_email,
-            'recipient_name': self.recipient_name,
-            'status': self.status,
-            'is_personalized': self.is_personalized,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
-        }

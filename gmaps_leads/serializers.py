@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import ScrapeJob, GmapsLead, WhatsAppContact, LeadWebsite, EmailTemplate
+from .models import ScrapeJob, GmapsLead, WhatsAppContact, LeadWebsite, CustomizedContact
 
 
 class ScrapeJobCreateSerializer(serializers.Serializer):
@@ -52,7 +52,7 @@ class GmapsLeadSerializer(serializers.ModelSerializer):
             'city', 'country'
         ]
     
-    def get_city(self, obj):
+    def get_city(self, obj) -> str | None:
         if obj.complete_address and isinstance(obj.complete_address, dict):
             return obj.complete_address.get('city')
         return None
@@ -74,7 +74,7 @@ class GmapsLeadListSerializer(serializers.ModelSerializer):
             'review_count', 'review_rating', 'city', 'created_at'
         ]
     
-    def get_city(self, obj):
+    def get_city(self, obj) -> str | None:
         if obj.complete_address and isinstance(obj.complete_address, dict):
             return obj.complete_address.get('city')
         return None
@@ -131,7 +131,7 @@ class LeadContextSerializer(serializers.ModelSerializer):
             'website_data', 'whatsapp_contacts', 'available_emails',
         ]
     
-    def get_website_data(self, obj):
+    def get_website_data(self, obj) -> dict | None:
         """Get scraped website data if available."""
         try:
             if hasattr(obj, 'website_data') and obj.website_data:
@@ -139,8 +139,8 @@ class LeadContextSerializer(serializers.ModelSerializer):
         except Exception:
             pass
         return None
-    
-    def get_whatsapp_contacts(self, obj):
+
+    def get_whatsapp_contacts(self, obj) -> list:
         """Get WhatsApp contacts for this lead."""
         if not hasattr(obj, "whatsapp_contacts"):
             return []
@@ -154,11 +154,11 @@ class LeadContextSerializer(serializers.ModelSerializer):
         except Exception:
             return []
         return []
-    
-    def get_available_emails(self, obj):
+
+    def get_available_emails(self, obj) -> list[str]:
         """Get all available emails from all sources."""
         emails = set()
-        
+
         # From lead's emails field
         if obj.emails:
             try:
@@ -170,14 +170,14 @@ class LeadContextSerializer(serializers.ModelSerializer):
                     emails.add(str(lead_emails))
             except:
                 pass
-        
+
         # From website data
         try:
             if hasattr(obj, 'website_data') and obj.website_data and obj.website_data.emails:
                 emails.update(obj.website_data.emails)
         except Exception:
             pass
-        
+
         return list(emails)
 
 
@@ -185,7 +185,7 @@ class LeadContextSerializer(serializers.ModelSerializer):
 # Email Template Serializers
 # ============================================================================
 
-class EmailTemplateCreateSerializer(serializers.ModelSerializer):
+class CustomizedContactCreateSerializer(serializers.ModelSerializer):
     """
     Serializer for creating/updating email templates via API.
     
@@ -202,23 +202,11 @@ class EmailTemplateCreateSerializer(serializers.ModelSerializer):
     )
     
     class Meta:
-        model = EmailTemplate
+        model = CustomizedContact
         fields = [
-            # Required fields
             'subject', 'body_html',
-            
-            # Optional content
-            'body_plain', 'name', 'template_type',
-            
-            # Optional recipient override
+            'name', 'template_type',
             'recipient_email', 'recipient_name',
-            
-            # Optional sender info
-            'sender_name', 'sender_email', 'reply_to',
-            
-            # (AI metadata fields removed)
-            
-            # Control
             'mark_ready',
         ]
     
@@ -260,75 +248,31 @@ class EmailTemplateCreateSerializer(serializers.ModelSerializer):
         return instance
 
 
-class EmailTemplateSerializer(serializers.ModelSerializer):
+class CustomizedContactSerializer(serializers.ModelSerializer):
     """
-    Full serializer for email template responses.
-    
-    OpenAPI 3.1 Schema:
-    GET /api/email-templates/{id}/
-    GET /api/gmaps-leads/{lead_id}/email-templates/
+    Full serializer for customized contact responses.
     """
     lead_title = serializers.CharField(source='lead.title', read_only=True)
-    target_email = serializers.CharField(read_only=True)
-    is_ready_to_send = serializers.BooleanField(read_only=True)
-    
     class Meta:
-        model = EmailTemplate
+        model = CustomizedContact
         fields = [
             'id', 'lead', 'lead_title',
-            
-            # Template info
             'name', 'template_type',
-            
-            # Email content
-            'subject', 'body_html', 'body_plain',
-            
-            # Recipient
-            'recipient_email', 'recipient_name', 'target_email',
-            
-            # Sender
-            'sender_name', 'sender_email', 'reply_to',
-            
-            # Status
-            'status', 'status_message', 'is_ready_to_send',
-            
-            # (AI metadata fields removed)
-            
-            # Tracking
-            'sent_at', 'opened_at', 'clicked_at',
-            
-            # Timestamps
+            'subject', 'body_html',
+            'recipient_email', 'recipient_name',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'sent_at', 'opened_at', 'clicked_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class EmailTemplateListSerializer(serializers.ModelSerializer):
-    """Compact serializer for listing email templates."""
+class CustomizedContactListSerializer(serializers.ModelSerializer):
+    """Compact serializer for listing customized contacts."""
     lead_title = serializers.CharField(source='lead.title', read_only=True)
-    target_email = serializers.CharField(read_only=True)
-    
     class Meta:
-        model = EmailTemplate
+        model = CustomizedContact
         fields = [
-            'id', 'lead', 'lead_title', 'subject', 'template_type',
-            'status', 'target_email', 'created_at'
+            'id', 'lead', 'lead_title', 'subject', 'template_type', 'created_at'
         ]
 
 
-class EmailTemplateStatusUpdateSerializer(serializers.Serializer):
-    """
-    Serializer for updating email template status.
-    
-    OpenAPI 3.1 Schema:
-    PATCH /api/email-templates/{id}/status/
-    """
-    status = serializers.ChoiceField(
-        choices=['draft', 'ready', 'approved', 'rejected'],
-        help_text="New status for the template"
-    )
-    status_message = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        help_text="Optional message explaining status change"
-    )
+    # Status update serializer removed as status field is no longer present in model

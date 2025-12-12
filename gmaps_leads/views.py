@@ -14,13 +14,13 @@ from drf_spectacular.types import OpenApiTypes
 import csv
 import logging
 
-from .models import ScrapeJob, GmapsLead, EmailTemplate
+from .models import ScrapeJob, GmapsLead, CustomizedContact
 from .serializers import (
     ScrapeJobSerializer, ScrapeJobCreateSerializer,
     GmapsLeadSerializer, GmapsLeadListSerializer,
     LeadContextSerializer, 
-    EmailTemplateSerializer, EmailTemplateListSerializer,
-    EmailTemplateCreateSerializer, EmailTemplateStatusUpdateSerializer
+    CustomizedContactSerializer, CustomizedContactListSerializer,
+    CustomizedContactCreateSerializer
 )
 from .services import (
     create_scrape_job, refresh_job_status, import_job_results,
@@ -380,6 +380,57 @@ def export_leads_csv(request):
 # AI Integration API Views (OpenAPI 3.1)
 # =============================================================================
 
+# =============================================================================
+# Lead Category Stats APIView (for GPT onboarding)
+# =============================================================================
+
+from django.db.models import Count, Q
+
+class LeadCategoryStatsAPIView(APIView):
+    """
+    API endpoint to provide available categories and lead stats for GPT onboarding.
+    Returns a list of categories, number of leads per category, number with WhatsApp, and number with website.
+    """
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        operation_id='getLeadCategoryStats',
+        summary='Get lead category stats (GPT onboarding)',
+        description='Returns available categories, number of leads per category, number with WhatsApp, and number with website. This endpoint is intended as the first call for AI agents (GPT) to understand the available data.',
+        responses={
+            200: OpenApiTypes.OBJECT,
+        },
+        tags=['AI Email Generation', 'Stats']
+    )
+    def get(self, request):
+        """Get stats for all categories and lead counts."""
+        # Use Python-side aggregation so we can rely on the model's phone_type
+        # property (not a DB column) without complex SQL annotations.
+        stats = {}
+        for lead in GmapsLead.objects.all():
+            category = lead.category or 'Uncategorized'
+            bucket = stats.setdefault(category, {
+                'category': category,
+                'total_leads': 0,
+                'leads_with_whatsapp': 0,
+                'leads_with_website': 0,
+                'leads_with_ready_customized_contact': 0,
+            })
+            bucket['total_leads'] += 1
+            if lead.phone_type == 'whatsapp':
+                bucket['leads_with_whatsapp'] += 1
+            if lead.website:
+                bucket['leads_with_website'] += 1
+            # Count ready customized contacts for this lead
+            ready_count = 0
+            for contact in getattr(lead, 'customized_contacts', []).all():
+                if getattr(contact, 'is_ready', False):
+                    ready_count += 1
+            bucket['leads_with_ready_customized_contact'] += ready_count
+
+        data = sorted(stats.values(), key=lambda r: r['total_leads'], reverse=True)
+        return Response({'categories': data})
+
 class LeadContextAPIView(APIView):
     """
     API endpoint for AI to fetch concise lead context for personalization.
@@ -415,12 +466,17 @@ class LeadContextAPIView(APIView):
 
 
 class LeadEmailTemplateAPIView(APIView):
+    """
+    Per-lead endpoint for listing and creating customized contacts.
+    Use this endpoint to manage contacts for a specific lead (nested resource).
+    Example: /api/leads/{lead_id}/customized-contact/
+    """
     permission_classes = [AllowAny]
     
     @extend_schema(
-        operation_id='getLeadEmailTemplates',
-        summary='List email templates for a lead',
-        description='Returns all email templates created for this lead.',
+        operation_id='getLeadCustomizedContacts',
+        summary='List customized contacts for a lead',
+        description='Returns all customized contacts created for this lead. Use this endpoint for per-lead (nested) access. For a global list, use /api/customized-contacts/.',
         parameters=[
             OpenApiParameter(
                 name='lead_id',
@@ -429,7 +485,7 @@ class LeadEmailTemplateAPIView(APIView):
                 description='The ID of the lead'
             )
         ],
-        responses={200: EmailTemplateListSerializer(many=True)},
+        responses={200: CustomizedContactListSerializer(many=True)},
         tags=['AI Email Generation']
     )
     def get(self, request, lead_id):
@@ -438,14 +494,14 @@ class LeadEmailTemplateAPIView(APIView):
         if request.user.is_authenticated:
             qs = qs.filter(job__created_by=request.user)
         lead = get_object_or_404(qs, pk=lead_id)
-        templates = lead.email_templates.all()
-        serializer = EmailTemplateListSerializer(templates, many=True)
+        templates = lead.customizedcontact_set.all()
+        serializer = CustomizedContactListSerializer(templates, many=True)
         return Response(serializer.data)
     
     @extend_schema(
-        operation_id='createLeadEmailTemplate',
-        summary='Create email template for a lead (AI endpoint)',
-        description='Creates a new email template for the specified lead. Intended for AI agents to submit generated content; set mark_ready=true to flag for human review.',
+        operation_id='createLeadCustomizedContact',
+        summary='Create customized contact for a lead (AI endpoint)',
+        description='Creates a new customized contact for the specified lead. Use this endpoint for per-lead (nested) creation. For global creation, use /api/customized-contacts/. Intended for AI agents to submit generated content; set mark_ready=true to flag for human review.',
         parameters=[
             OpenApiParameter(
                 name='lead_id',
@@ -454,9 +510,9 @@ class LeadEmailTemplateAPIView(APIView):
                 description='The ID of the lead to create template for'
             )
         ],
-        request=EmailTemplateCreateSerializer,
+        request=CustomizedContactCreateSerializer,
         responses={
-            201: EmailTemplateSerializer,
+            201: CustomizedContactSerializer,
             400: OpenApiTypes.OBJECT,
         },
         examples=[
@@ -465,7 +521,6 @@ class LeadEmailTemplateAPIView(APIView):
                 value={
                     'subject': 'Partnership opportunity for {{business_name}}',
                     'body_html': '<h1>Hello {{recipient_name}},</h1><p>I noticed your business...</p>',
-                    'body_plain': 'Hello {{recipient_name}},\n\nI noticed your business...',
                     'template_type': 'outreach',
                     'mark_ready': True,
                 },
@@ -481,7 +536,7 @@ class LeadEmailTemplateAPIView(APIView):
             qs = qs.filter(job__created_by=request.user)
         lead = get_object_or_404(qs, pk=lead_id)
         
-        serializer = EmailTemplateCreateSerializer(
+        serializer = CustomizedContactCreateSerializer(
             data=request.data,
             context={'lead': lead, 'request': request}
         )
@@ -492,7 +547,7 @@ class LeadEmailTemplateAPIView(APIView):
                 extra["created_by"] = request.user
             template = serializer.save(**extra)
             return Response(
-                EmailTemplateSerializer(template).data,
+                CustomizedContactSerializer(template).data,
                 status=status.HTTP_201_CREATED
             )
         
@@ -511,34 +566,34 @@ class EmailTemplateAPIView(APIView):
     
     def get_template(self, request, template_id):
         """Get template with permission check."""
-        qs = EmailTemplate.objects.all()
+        qs = CustomizedContact.objects.all()
         if request.user.is_authenticated:
             qs = qs.filter(lead__job__created_by=request.user)
         return get_object_or_404(qs, pk=template_id)
     
     @extend_schema(
-        operation_id='getEmailTemplate',
-        summary='Get email template details',
-        responses={200: EmailTemplateSerializer},
-        tags=['Email Templates']
+        operation_id='getCustomizedContact',
+        summary='Get customized contact details',
+        responses={200: CustomizedContactSerializer},
+        tags=['Customized Contacts']
     )
     def get(self, request, template_id):
         """Get email template."""
         template = self.get_template(request, template_id)
-        serializer = EmailTemplateSerializer(template)
+        serializer = CustomizedContactSerializer(template)
         return Response(serializer.data)
     
     @extend_schema(
-        operation_id='updateEmailTemplate',
-        summary='Update email template',
-        request=EmailTemplateCreateSerializer,
-        responses={200: EmailTemplateSerializer},
-        tags=['Email Templates']
+        operation_id='updateCustomizedContact',
+        summary='Update customized contact',
+        request=CustomizedContactCreateSerializer,
+        responses={200: CustomizedContactSerializer},
+        tags=['Customized Contacts']
     )
     def put(self, request, template_id):
         """Update email template."""
         template = self.get_template(request, template_id)
-        serializer = EmailTemplateCreateSerializer(
+        serializer = CustomizedContactCreateSerializer(
             template,
             data=request.data,
             partial=True,
@@ -547,15 +602,15 @@ class EmailTemplateAPIView(APIView):
         
         if serializer.is_valid():
             template = serializer.save()
-            return Response(EmailTemplateSerializer(template).data)
+            return Response(CustomizedContactSerializer(template).data)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @extend_schema(
-        operation_id='deleteEmailTemplate',
-        summary='Delete email template',
+        operation_id='deleteCustomizedContact',
+        summary='Delete customized contact',
         responses={204: None},
-        tags=['Email Templates']
+        tags=['Customized Contacts']
     )
     def delete(self, request, template_id):
         """Delete email template."""
@@ -564,60 +619,65 @@ class EmailTemplateAPIView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class EmailTemplateStatusAPIView(APIView):
+from rest_framework.generics import GenericAPIView
+from .serializers import CustomizedContactSerializer
+from .status_update_serializer import EmailTemplateStatusUpdateSerializer
+
+class EmailTemplateStatusAPIView(GenericAPIView):
     permission_classes = [AllowAny]
-    
+    serializer_class = EmailTemplateStatusUpdateSerializer
+
     @extend_schema(
-        operation_id='updateEmailTemplateStatus',
-        summary='Update email template status',
-        description='Updates an email template status (draft, ready, approved, rejected) and emits signals for ready/approved states.',
+        operation_id='updateCustomizedContactStatus',
+        summary='Update customized contact status',
+        description='Updates a customized contact status (draft, ready, approved, rejected) and emits signals for ready/approved states.',
         request=EmailTemplateStatusUpdateSerializer,
-        responses={200: EmailTemplateSerializer},
-        tags=['Email Templates']
+        responses={200: CustomizedContactSerializer},
+        tags=['Customized Contacts']
     )
     def patch(self, request, template_id):
         """Update email template status."""
-        qs = EmailTemplate.objects.all()
+        qs = CustomizedContact.objects.all()
         if request.user.is_authenticated:
             qs = qs.filter(lead__job__created_by=request.user)
         template = get_object_or_404(qs, pk=template_id)
-        
-        serializer = EmailTemplateStatusUpdateSerializer(data=request.data)
+
+        serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             old_status = template.status
             new_status = serializer.validated_data['status']
-            
+
             template.status = new_status
             if 'status_message' in serializer.validated_data:
                 template.status_message = serializer.validated_data['status_message']
             template.save()
-            
+
             # Emit signals based on status change
             if new_status == 'ready' and old_status != 'ready':
                 email_template_ready.send(sender=self.__class__, instance=template)
                 logger.info(f"Email template {template.id} marked as ready - signal emitted")
-            
+
             elif new_status == 'approved' and old_status != 'approved':
                 email_template_approved.send(sender=self.__class__, instance=template)
                 logger.info(f"Email template {template.id} approved - signal emitted")
-            
-            return Response(EmailTemplateSerializer(template).data)
-        
+
+            return Response(CustomizedContactSerializer(template).data)
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class EmailTemplateListAPIView(APIView):
     """
-    API endpoint for listing all email templates.
-    
-    GET /api/email-templates/
+    Global endpoint for listing and creating all customized contacts.
+    Use this endpoint to access all contacts across all leads (flat resource).
+    Example: /api/customized-contacts/
     """
     permission_classes = [AllowAny]
     
     @extend_schema(
-        operation_id='listEmailTemplates',
-        summary='List all email templates',
-        description='Returns all email templates for the current user.',
+        operation_id='listCustomizedContacts',
+        summary='List all customized contacts (global)',
+        description='Returns all customized contacts for the current user, across all leads. Use this endpoint for a flat/global list. For per-lead access, use /api/leads/{lead_id}/customized-contact/.',
         parameters=[
             OpenApiParameter(
                 name='status',
@@ -630,12 +690,12 @@ class EmailTemplateListAPIView(APIView):
                 description='Filter by lead ID'
             ),
         ],
-        responses={200: EmailTemplateListSerializer(many=True)},
-        tags=['Email Templates']
+        responses={200: CustomizedContactListSerializer(many=True)},
+        tags=['Customized Contacts']
     )
     def get(self, request):
         """List all email templates."""
-        templates = EmailTemplate.objects.all().select_related('lead')
+        templates = CustomizedContact.objects.all().select_related('lead')
         if request.user.is_authenticated:
             templates = templates.filter(lead__job__created_by=request.user)
         
@@ -648,7 +708,7 @@ class EmailTemplateListAPIView(APIView):
         if lead_id:
             templates = templates.filter(lead_id=lead_id)
         
-        serializer = EmailTemplateListSerializer(templates, many=True)
+        serializer = CustomizedContactListSerializer(templates, many=True)
         return Response(serializer.data)
 
 
@@ -706,7 +766,7 @@ class LeadsWithEmailsAPIView(APIView):
         without_template = request.query_params.get('without_template')
         if without_template and without_template.lower() == 'true':
             leads = leads.exclude(
-                Exists(EmailTemplate.objects.filter(lead=OuterRef('pk')))
+                Exists(CustomizedContact.objects.filter(lead=OuterRef('pk')))
             )
         
         # Filter by category
