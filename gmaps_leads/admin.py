@@ -852,33 +852,53 @@ class HasTargetEmailFilter(admin.SimpleListFilter):
         return queryset
 
 
+from django import forms
+from ckeditor.widgets import CKEditorWidget
+
+class CustomizedContactAdminForm(forms.ModelForm):
+    class Meta:
+        model = CustomizedContact
+        fields = '__all__'
+        widgets = {
+            'body_html': CKEditorWidget(),
+        }
+
 @admin.register(CustomizedContact)
 class CustomizedContactAdmin(admin.ModelAdmin):
+    form = CustomizedContactAdminForm
+    raw_id_fields = ['lead']
+    readonly_fields = ['body_plain_display', 'created_at', 'updated_at']
     list_display = [
         'lead', 'subject', 'template_type', 'status', 'recipient_email', 'created_at', 'updated_at'
     ]
-    list_filter = ['status', 'template_type', 'created_at', 'updated_at']
-    search_fields = ['subject', 'body_html', 'recipient_email', 'lead__title']
-    readonly_fields = ['created_at', 'updated_at']
-    list_display = ['lead', 'subject', 'template_type']
-    list_filter = [CustomizedContactTypeFilter]
-    search_fields = ['lead__title', 'subject', 'body_html', 'recipient_email']
-    raw_id_fields = ['lead']
-    readonly_fields = []
+    list_filter = [CustomizedContactTypeFilter, 'status', 'created_at', 'updated_at']
+    search_fields = ['lead__title', 'subject', 'body_html', 'body_plain', 'recipient_email']
+
     fieldsets = (
         ('Lead & Content Info', {
-            'fields': ('lead', 'name', 'template_type')
+            'fields': ('lead', 'name', 'template_type', 'status')
         }),
         ('Content', {
-            'fields': ('subject', 'body_html')
+            'fields': ('subject', 'body_html', 'body_plain_display')
         }),
         ('Recipient', {
             'fields': ('recipient_email', 'recipient_name')
         }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at')
+        }),
     )
 
-    
-    
+    def body_plain_display(self, obj):
+        """Show WhatsApp-friendly message generated from HTML."""
+        if not obj or not obj.body_plain:
+            return format_html('<span style="color:#999;">No WhatsApp message generated yet.</span>')
+        return format_html(
+            '<pre style="white-space: pre-wrap; background: #f8f9fa; padding: 8px; border-radius: 4px;">{}</pre>',
+            obj.body_plain
+        )
+    body_plain_display.short_description = 'WhatsApp Message (auto-generated)'
+
     def created_at_display(self, obj):
         """Show formatted creation date."""
         return obj.created_at.strftime('%Y-%m-%d %H:%M')
