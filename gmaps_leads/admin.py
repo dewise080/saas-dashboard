@@ -4,7 +4,10 @@ from django.urls import reverse, path
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.http import HttpResponseRedirect
+from django.db import models
 from django.db.models import Q
+from django import forms
+from ckeditor.widgets import CKEditorWidget
 from .models import ScrapeJob, GmapsLead, WhatsAppContact, LeadWebsite, EmailTemplate
 from .services import create_scrape_job, refresh_job_status, import_job_results, GmapsScraperService
 
@@ -891,7 +894,7 @@ class EmailTemplateAdmin(admin.ModelAdmin):
             'fields': ('lead', 'name', 'template_type', 'lead_context_preview')
         }),
         ('Email Content', {
-            'fields': ('subject', 'body_html', 'body_plain')
+            'fields': ('subject', 'body_html', 'body_plain', 'body_html_preview', 'body_plain_preview')
         }),
         ('Recipient', {
             'fields': ('recipient_email', 'recipient_name', 'target_email')
@@ -925,6 +928,27 @@ class EmailTemplateAdmin(admin.ModelAdmin):
         'mark_as_ready', 'mark_as_approved', 'mark_as_draft', 
         'mark_as_rejected', 'export_for_sending'
     ]
+
+    def target_email_display(self, obj):
+        return obj.target_email or obj.recipient_email or "-"
+    target_email_display.short_description = "Target Email"
+
+    def body_html_preview(self, obj):
+        if obj.body_html:
+            return format_html('<div style="max-width:600px;white-space:pre-wrap;">{}</div>', obj.body_html[:400])
+        return "-"
+    body_html_preview.short_description = "HTML Preview"
+
+    def body_plain_preview(self, obj):
+        if obj.body_plain:
+            text = (obj.body_plain[:400] + '...') if len(obj.body_plain) > 400 else obj.body_plain
+            return format_html('<pre style="max-width:600px;white-space:pre-wrap;">{}</pre>', text)
+        return "-"
+    body_plain_preview.short_description = "Plain Preview"
+
+    formfield_overrides = {
+        models.TextField: {'widget': CKEditorWidget(config_name='default')},
+    }
     
     def lead_name(self, obj):
         """Show lead business name with link."""
@@ -1101,5 +1125,3 @@ class EmailTemplateAdmin(admin.ModelAdmin):
             return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/admin/'))
         
         return response
-
-

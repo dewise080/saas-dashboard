@@ -38,7 +38,7 @@ INTERNAL_IPS = [
 ALLOWED_HOSTS = ['*']
 
 # Add here your deployment HOSTS
-CSRF_TRUSTED_ORIGINS = ['https://app.whatsynaptic.tech', 'http://localhost:8000', 'http://127.0.0.1:8000']
+CSRF_TRUSTED_ORIGINS = ['https://app.whatsynaptic.tech', 'http://localhost:8000', 'http://127.0.0.1:8000','https://app.delilclinic.com']
 
 # Allow embedding in iframes (for integration with other sites)
 X_FRAME_OPTIONS = "ALLOWALL"
@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     "django.contrib.admin",
     "accounts_plus",
     'admin_datta.apps.AdminDattaConfig',  # Re-enabled - module is installed
+    "ckeditor",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -247,9 +248,10 @@ SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
-        'rest_framework.authentication.TokenAuthentication',
+    # Keep the API open for external callers (no auth or permission enforcement)
+    'DEFAULT_AUTHENTICATION_CLASSES': [],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.AllowAny',
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
@@ -281,6 +283,9 @@ API for AI-driven email outreach based on Google Maps lead data.
     'SERVERS': [
         {'url': 'https://app.whatsynaptic.tech', 'description': 'Production'},
     ],
+    # No auth requirements in the generated schema (keep endpoints open)
+    'SECURITY': [],
+    'OPENAPI_VERSION': '3.1.0',
     'TAGS': [
         {'name': 'AI Email Generation', 'description': 'Endpoints for AI to generate personalized emails'},
         {'name': 'Email Templates', 'description': 'Manage email templates'},

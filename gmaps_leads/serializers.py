@@ -142,12 +142,17 @@ class LeadContextSerializer(serializers.ModelSerializer):
     
     def get_whatsapp_contacts(self, obj):
         """Get WhatsApp contacts for this lead."""
-        contacts = obj.whatsapp_contacts.all()
-        if contacts.exists():
-            return [
-                {'chat_id': c.chat_id, 'jid': c.jid, 'phone': c.phone_raw}
-                for c in contacts
-            ]
+        if not hasattr(obj, "whatsapp_contacts"):
+            return []
+        try:
+            contacts = obj.whatsapp_contacts.all()
+            if contacts.exists():
+                return [
+                    {'chat_id': c.chat_id, 'jid': c.jid, 'phone': getattr(c, 'phone_raw', None)}
+                    for c in contacts
+                ]
+        except Exception:
+            return []
         return []
     
     def get_available_emails(self, obj):

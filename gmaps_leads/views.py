@@ -3,12 +3,13 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_http_methods
+from django.db.models import Q
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
 import csv
 import logging
@@ -34,11 +35,19 @@ logger = logging.getLogger(__name__)
 # API ViewSets (DRF)
 # =============================================================================
 
+@extend_schema_view(
+    list=extend_schema(operation_id="jobs_list", summary="List jobs"),
+    create=extend_schema(operation_id="jobs_create", summary="Create job"),
+    retrieve=extend_schema(operation_id="jobs_retrieve", summary="Retrieve job"),
+    destroy=extend_schema(operation_id="jobs_destroy", summary="Delete job"),
+)
 class ScrapeJobViewSet(viewsets.ModelViewSet):
     """API ViewSet for ScrapeJob."""
     queryset = ScrapeJob.objects.all()
     serializer_class = ScrapeJobSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
+    lookup_field = "pk"
+    lookup_url_kwarg = "pk"
     
     def get_queryset(self):
         """Filter jobs by current user."""
@@ -62,6 +71,15 @@ class ScrapeJobViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
+    @extend_schema(exclude=True)
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @extend_schema(exclude=True)
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    @extend_schema(exclude=True)
     @action(detail=True, methods=['post'])
     def refresh(self, request, pk=None):
         """Refresh job status from API."""
@@ -69,6 +87,7 @@ class ScrapeJobViewSet(viewsets.ModelViewSet):
         job = refresh_job_status(job)
         return Response(ScrapeJobSerializer(job).data)
     
+    @extend_schema(exclude=True)
     @action(detail=True, methods=['post'])
     def import_results(self, request, pk=None):
         """Import job results from API."""
@@ -87,6 +106,7 @@ class ScrapeJobViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
+    @extend_schema(operation_id="jobs_leads_retrieve", summary="List leads for a job")
     @action(detail=True, methods=['get'])
     def leads(self, request, pk=None):
         """Get leads for this job."""
@@ -96,15 +116,30 @@ class ScrapeJobViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+@extend_schema_view(
+    list=extend_schema(
+        operation_id='leads_list',
+        summary='List leads (limited)',
+        parameters=[
+            OpenApiParameter(name='limit', type=OpenApiTypes.INT, description='Max results (default 50, max 200)'),
+            OpenApiParameter(name='job', type=OpenApiTypes.INT, description='Filter by job ID'),
+            OpenApiParameter(name='category', type=OpenApiTypes.STR, description='Filter by category'),
+            OpenApiParameter(name='min_rating', type=OpenApiTypes.NUMBER, description='Filter by minimum rating'),
+        ],
+    ),
+    retrieve=extend_schema(operation_id='leads_retrieve', summary='Retrieve lead'),
+)
 class GmapsLeadViewSet(viewsets.ReadOnlyModelViewSet):
     """API ViewSet for GmapsLead (read-only)."""
     queryset = GmapsLead.objects.all()
     serializer_class = GmapsLeadSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def get_queryset(self):
         """Filter leads by user's jobs."""
-        qs = GmapsLead.objects.filter(job__created_by=self.request.user)
+        qs = GmapsLead.objects.all()
+        if self.request.user.is_authenticated:
+            qs = qs.filter(job__created_by=self.request.user)
         
         # Filter by job
         job_id = self.request.query_params.get('job')
@@ -120,8 +155,12 @@ class GmapsLeadViewSet(viewsets.ReadOnlyModelViewSet):
         min_rating = self.request.query_params.get('min_rating')
         if min_rating:
             qs = qs.filter(review_rating__gte=float(min_rating))
-        
-        return qs
+        limit = self.request.query_params.get('limit')
+        try:
+            limit_val = min(int(limit), 200) if limit else 50
+        except Exception:
+            limit_val = 50
+        return qs[:limit_val]
     
     def get_serializer_class(self):
         if self.action == 'list':
@@ -308,32 +347,14 @@ def export_leads_csv(request):
 
 class LeadContextAPIView(APIView):
     """
-    API endpoint for AI to fetch comprehensive lead context.
-    
-    GET /api/gmaps-leads/{lead_id}/context/
-    
-    Returns all available business information for personalized email generation:
-    - Basic business info (name, category, address, phone)
-    - Website scraped data (emails, services, descriptions)
-    - WhatsApp contacts if available
-    - Reviews and ratings
+    API endpoint for AI to fetch concise lead context for personalization.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     @extend_schema(
         operation_id='getLeadContext',
-        summary='Get comprehensive lead context for AI email generation',
-        description='''
-        Retrieves all available business information for a lead, designed for AI consumption.
-        
-        This endpoint aggregates:
-        - Basic business info from Google Maps
-        - Scraped website content and extracted emails
-        - WhatsApp contact information
-        - Reviews and ratings
-        
-        Use this data to generate personalized outreach emails.
-        ''',
+        summary='Get lead context for AI email generation',
+        description='Returns key business info, scraped website data, WhatsApp contacts, and reviews for the specified lead.',
         parameters=[
             OpenApiParameter(
                 name='lead_id',
@@ -350,23 +371,16 @@ class LeadContextAPIView(APIView):
     )
     def get(self, request, lead_id):
         """Get lead context for AI email generation."""
-        lead = get_object_or_404(
-            GmapsLead.objects.select_related('website_data').prefetch_related('whatsapp_contacts'),
-            pk=lead_id,
-            job__created_by=request.user
-        )
+        qs = GmapsLead.objects.select_related('website_data')
+        if request.user.is_authenticated:
+            qs = qs.filter(job__created_by=request.user)
+        lead = get_object_or_404(qs, pk=lead_id)
         serializer = LeadContextSerializer(lead)
         return Response(serializer.data)
 
 
 class LeadEmailTemplateAPIView(APIView):
-    """
-    API endpoint for AI to create/update email templates for a lead.
-    
-    POST /api/gmaps-leads/{lead_id}/email-template/
-    GET /api/gmaps-leads/{lead_id}/email-templates/
-    """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     @extend_schema(
         operation_id='getLeadEmailTemplates',
@@ -385,7 +399,10 @@ class LeadEmailTemplateAPIView(APIView):
     )
     def get(self, request, lead_id):
         """List email templates for a lead."""
-        lead = get_object_or_404(GmapsLead, pk=lead_id, job__created_by=request.user)
+        qs = GmapsLead.objects.all()
+        if request.user.is_authenticated:
+            qs = qs.filter(job__created_by=request.user)
+        lead = get_object_or_404(qs, pk=lead_id)
         templates = lead.email_templates.all()
         serializer = EmailTemplateListSerializer(templates, many=True)
         return Response(serializer.data)
@@ -393,21 +410,7 @@ class LeadEmailTemplateAPIView(APIView):
     @extend_schema(
         operation_id='createLeadEmailTemplate',
         summary='Create email template for a lead (AI endpoint)',
-        description='''
-        Creates a new email template for the specified lead.
-        
-        This endpoint is designed for AI agents to submit generated email content.
-        
-        **Workflow:**
-        1. AI fetches lead context via GET /api/gmaps-leads/{id}/context/
-        2. AI generates personalized email
-        3. AI posts to this endpoint with mark_ready=true
-        4. Signal emitted when template is ready for human review
-        
-        **mark_ready parameter:**
-        - If true, template status is set to 'ready' and a signal is emitted
-        - If false (default), template is saved as 'draft'
-        ''',
+        description='Creates a new email template for the specified lead. Intended for AI agents to submit generated content; set mark_ready=true to flag for human review.',
         parameters=[
             OpenApiParameter(
                 name='lead_id',
@@ -441,7 +444,10 @@ class LeadEmailTemplateAPIView(APIView):
     )
     def post(self, request, lead_id):
         """Create email template for a lead."""
-        lead = get_object_or_404(GmapsLead, pk=lead_id, job__created_by=request.user)
+        qs = GmapsLead.objects.all()
+        if request.user.is_authenticated:
+            qs = qs.filter(job__created_by=request.user)
+        lead = get_object_or_404(qs, pk=lead_id)
         
         serializer = EmailTemplateCreateSerializer(
             data=request.data,
@@ -449,7 +455,10 @@ class LeadEmailTemplateAPIView(APIView):
         )
         
         if serializer.is_valid():
-            template = serializer.save(created_by=request.user)
+            extra = {}
+            if request.user.is_authenticated:
+                extra["created_by"] = request.user
+            template = serializer.save(**extra)
             return Response(
                 EmailTemplateSerializer(template).data,
                 status=status.HTTP_201_CREATED
@@ -466,15 +475,14 @@ class EmailTemplateAPIView(APIView):
     PUT /api/email-templates/{id}/
     DELETE /api/email-templates/{id}/
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def get_template(self, request, template_id):
         """Get template with permission check."""
-        return get_object_or_404(
-            EmailTemplate,
-            pk=template_id,
-            lead__job__created_by=request.user
-        )
+        qs = EmailTemplate.objects.all()
+        if request.user.is_authenticated:
+            qs = qs.filter(lead__job__created_by=request.user)
+        return get_object_or_404(qs, pk=template_id)
     
     @extend_schema(
         operation_id='getEmailTemplate',
@@ -525,42 +533,22 @@ class EmailTemplateAPIView(APIView):
 
 
 class EmailTemplateStatusAPIView(APIView):
-    """
-    API endpoint for updating email template status.
-    
-    PATCH /api/email-templates/{id}/status/
-    
-    Allows changing status and emits signals for workflow automation.
-    """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     @extend_schema(
         operation_id='updateEmailTemplateStatus',
         summary='Update email template status',
-        description='''
-        Updates the status of an email template.
-        
-        **Status values:**
-        - draft: Template is being edited
-        - ready: Template is ready for human review (emits signal)
-        - approved: Human has approved for sending (emits signal)
-        - rejected: Human has rejected the template
-        
-        **Signals emitted:**
-        - When status changes to 'ready': email_template_ready signal
-        - When status changes to 'approved': email_template_approved signal
-        ''',
+        description='Updates an email template status (draft, ready, approved, rejected) and emits signals for ready/approved states.',
         request=EmailTemplateStatusUpdateSerializer,
         responses={200: EmailTemplateSerializer},
         tags=['Email Templates']
     )
     def patch(self, request, template_id):
         """Update email template status."""
-        template = get_object_or_404(
-            EmailTemplate,
-            pk=template_id,
-            lead__job__created_by=request.user
-        )
+        qs = EmailTemplate.objects.all()
+        if request.user.is_authenticated:
+            qs = qs.filter(lead__job__created_by=request.user)
+        template = get_object_or_404(qs, pk=template_id)
         
         serializer = EmailTemplateStatusUpdateSerializer(data=request.data)
         if serializer.is_valid():
@@ -592,7 +580,7 @@ class EmailTemplateListAPIView(APIView):
     
     GET /api/email-templates/
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     @extend_schema(
         operation_id='listEmailTemplates',
@@ -615,9 +603,9 @@ class EmailTemplateListAPIView(APIView):
     )
     def get(self, request):
         """List all email templates."""
-        templates = EmailTemplate.objects.filter(
-            lead__job__created_by=request.user
-        ).select_related('lead')
+        templates = EmailTemplate.objects.all().select_related('lead')
+        if request.user.is_authenticated:
+            templates = templates.filter(lead__job__created_by=request.user)
         
         # Filters
         status_filter = request.query_params.get('status')
@@ -640,7 +628,7 @@ class LeadsWithEmailsAPIView(APIView):
     
     Useful for AI to find leads that can receive outreach emails.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     @extend_schema(
         operation_id='listLeadsWithEmails',
@@ -672,15 +660,15 @@ class LeadsWithEmailsAPIView(APIView):
     )
     def get(self, request):
         """List leads with available emails."""
-        from django.db.models import Q, Exists, OuterRef
+        from django.db.models import Exists, OuterRef
         
         # Start with leads that have website data with emails
         leads = GmapsLead.objects.filter(
-            job__created_by=request.user
-        ).filter(
-            Q(website_data__emails__len__gt=0) |  # Has emails from website scraping
-            Q(emails__isnull=False)  # Or has emails field
+            Q(website_data__emails__len__gt=0) |
+            Q(emails__isnull=False)
         ).select_related('website_data').distinct()
+        if request.user.is_authenticated:
+            leads = leads.filter(job__created_by=request.user)
         
         # Filter to leads without templates
         without_template = request.query_params.get('without_template')
@@ -695,9 +683,52 @@ class LeadsWithEmailsAPIView(APIView):
             leads = leads.filter(category__icontains=category)
         
         # Limit
-        limit = int(request.query_params.get('limit', 50))
-        leads = leads[:limit]
+        try:
+            limit = int(request.query_params.get('limit', 50))
+        except Exception:
+            limit = 50
+        leads = leads[: min(limit, 200)]
         
         serializer = GmapsLeadListSerializer(leads, many=True)
         return Response(serializer.data)
 
+
+class ContactableLeadsAPIView(APIView):
+    """
+    Return leads that have at least one contact method (phone or email).
+    Accepts optional category filter and limit (default 10, max 200).
+    """
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        operation_id='leads_contactable',
+        summary='List contactable leads',
+        description='Returns leads that have a phone number or email. Optional filters: category, limit (default 10, max 200).',
+        parameters=[
+            OpenApiParameter(name='category', type=OpenApiTypes.STR, description='Filter by business category'),
+            OpenApiParameter(name='limit', type=OpenApiTypes.INT, description='Max results (default 10, max 200)'),
+        ],
+        responses={200: GmapsLeadListSerializer(many=True)},
+        tags=['Leads'],
+    )
+    def get(self, request):
+        category = request.query_params.get('category')
+        try:
+            limit = int(request.query_params.get('limit', 10))
+        except Exception:
+            limit = 10
+        limit = min(max(limit, 1), 200)
+
+        leads = GmapsLead.objects.filter(
+            Q(phone__isnull=False) & ~Q(phone__exact='') |
+            Q(emails__isnull=False) & ~Q(emails__exact='') |
+            Q(website_data__emails__len__gt=0)
+        )
+        if category:
+            leads = leads.filter(category__icontains=category)
+        if request.user.is_authenticated:
+            leads = leads.filter(job__created_by=request.user)
+
+        leads = leads.order_by('-id')[:limit]
+        serializer = GmapsLeadListSerializer(leads, many=True)
+        return Response(serializer.data)
