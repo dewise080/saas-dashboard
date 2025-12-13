@@ -343,6 +343,7 @@ def import_job_results(job: ScrapeJob) -> int:
     
     # Parse local CSV file
     leads_created = 0
+    duplicates_skipped = 0
     errors = []
     
     try:
@@ -351,6 +352,11 @@ def import_job_results(job: ScrapeJob) -> int:
             
             for row_num, row in enumerate(reader, start=2):  # start=2 because row 1 is header
                 try:
+                    existing = _find_existing_lead(row, job)
+                    if existing:
+                        duplicates_skipped += 1
+                        continue
+                    
                     lead = _create_lead_from_csv_row(row, job)
                     if lead:
                         leads_created += 1
@@ -359,13 +365,17 @@ def import_job_results(job: ScrapeJob) -> int:
                     logger.warning(f"Failed to import row {row_num}: {e}")
         
         # Update job stats
-        job.leads_count = leads_created
+        job.leads_count = job.leads.count()
         job.status = 'completed'
         job.completed_at = job.completed_at or timezone.now()
         job.csv_file_path = csv_path  # Store the CSV file path
         
         if errors:
             job.error_message = f"Imported with {len(errors)} errors. First error: {errors[0]}"
+        elif duplicates_skipped:
+            job.error_message = f"Skipped {duplicates_skipped} duplicate rows"
+        else:
+            job.error_message = None
         
         job.save()
         
@@ -419,6 +429,33 @@ def _parse_json_field(value: str) -> Optional[dict]:
         return None
 
 
+def _normalize_str(value: Optional[str], max_len: Optional[int] = None) -> Optional[str]:
+    """Trim whitespace, normalize empty strings to None, and truncate if needed."""
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    if max_len:
+        return value[:max_len]
+    return value
+
+
+def _find_existing_lead(row: dict, job: ScrapeJob) -> Optional[GmapsLead]:
+    """Check for an existing lead for this job using stable identifiers."""
+    cid = _normalize_str(row.get('cid'), 100)
+    data_id = _normalize_str(row.get('data_id'), 100)
+    link = _normalize_str(row.get('link'), 2000)
+    
+    for field, value in (('cid', cid), ('data_id', data_id), ('link', link)):
+        if not value:
+            continue
+        existing = GmapsLead.objects.filter(job=job, **{field: value}).first()
+        if existing:
+            return existing
+    return None
+
+
 def _create_lead_from_csv_row(row: dict, job: ScrapeJob) -> Optional[GmapsLead]:
     """
     Create a GmapsLead from a CSV row.
@@ -437,17 +474,26 @@ def _create_lead_from_csv_row(row: dict, job: ScrapeJob) -> Optional[GmapsLead]:
         latitude = float(row.get('latitude')) if row.get('latitude') else None
         longitude = float(row.get('longitude')) if row.get('longitude') else None
         
+        cid = _normalize_str(row.get('cid'), 100)
+        data_id = _normalize_str(row.get('data_id'), 100)
+        link = _normalize_str(row.get('link'), 2000)
+        category = _normalize_str(row.get('category'), 255)
+        phone = _normalize_str(row.get('phone'), 50)
+        website = _normalize_str(row.get('website'), 2000)
+        reviews_link = _normalize_str(row.get('reviews_link'), 2000)
+        thumbnail = _normalize_str(row.get('thumbnail'), 2000)
+        
         lead = GmapsLead.objects.create(
             job=job,
             input_id=row.get('input_id'),
-            cid=row.get('cid'),
-            data_id=row.get('data_id'),
+            cid=cid,
+            data_id=data_id,
             title=row.get('title', '')[:500],
-            link=row.get('link')[:2000] if row.get('link') else None,
-            category=row.get('category')[:255] if row.get('category') else None,
+            link=link,
+            category=category,
             address=row.get('address'),
-            phone=row.get('phone')[:50] if row.get('phone') else None,
-            website=row.get('website')[:2000] if row.get('website') else None,
+            phone=phone,
+            website=website,
             plus_code=row.get('plus_code'),
             emails=row.get('emails'),
             latitude=latitude,
@@ -459,10 +505,10 @@ def _create_lead_from_csv_row(row: dict, job: ScrapeJob) -> Optional[GmapsLead]:
             review_count=review_count,
             review_rating=review_rating,
             reviews_per_rating=_parse_json_field(row.get('reviews_per_rating')),
-            reviews_link=row.get('reviews_link')[:2000] if row.get('reviews_link') else None,
+            reviews_link=reviews_link,
             user_reviews=_parse_json_field(row.get('user_reviews')),
             user_reviews_extended=_parse_json_field(row.get('user_reviews_extended')),
-            thumbnail=row.get('thumbnail')[:2000] if row.get('thumbnail') else None,
+            thumbnail=thumbnail,
             images=_parse_json_field(row.get('images')),
             status=row.get('status'),
             descriptions=row.get('descriptions'),

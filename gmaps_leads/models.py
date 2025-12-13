@@ -162,6 +162,11 @@ class GmapsLead(models.Model):
             models.Index(fields=['phone']),
             models.Index(fields=['review_rating']),
         ]
+        constraints = [
+            models.UniqueConstraint(fields=['job', 'cid'], name='gmapslead_job_cid_unique'),
+            models.UniqueConstraint(fields=['job', 'data_id'], name='gmapslead_job_data_id_unique'),
+            models.UniqueConstraint(fields=['job', 'link'], name='gmapslead_job_link_unique'),
+        ]
 
     def __str__(self):
         return f"{self.title} - {self.category or 'No category'}"
