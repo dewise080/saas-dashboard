@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import ScrapeJob, GmapsLead, WhatsAppContact, LeadWebsite, CustomizedContact
+from apps.emailing.models import EmailCampaign, CampaignRecipient
 
 
 class ScrapeJobCreateSerializer(serializers.Serializer):
@@ -277,5 +278,88 @@ class CustomizedContactListSerializer(serializers.ModelSerializer):
             'id', 'lead', 'lead_title', 'subject', 'template_type', 'status', 'created_at'
         ]
 
+# ============================================================================
+# AI Campaign/Recipient Serializers
+# ============================================================================
+
+
+class AICampaignSerializer(serializers.ModelSerializer):
+    progress_percent = serializers.FloatField(read_only=True)
+
+    class Meta:
+        model = EmailCampaign
+        fields = [
+            "id",
+            "name",
+            "status",
+            "provider_alias",
+            "expected_recipients",
+            "sent_count",
+            "failed_count",
+            "skipped_count",
+            "progress_percent",
+            "last_dispatched_at",
+        ]
+
+
+class AICampaignRecipientStatusSerializer(serializers.Serializer):
+    pending = serializers.IntegerField()
+    ready = serializers.IntegerField()
+    rendered = serializers.IntegerField()
+    sending = serializers.IntegerField()
+    sent = serializers.IntegerField()
+    failed = serializers.IntegerField()
+    skipped = serializers.IntegerField()
+
+
+class AICampaignRecipientContextSerializer(serializers.ModelSerializer):
+    campaign_id = serializers.IntegerField(source="campaign.id", read_only=True)
+    email = serializers.EmailField(source="email_address.email", read_only=True)
+    business_name = serializers.CharField(source="context.business_name", read_only=True)
+    website = serializers.CharField(source="context.website", read_only=True)
+    category = serializers.CharField(source="context.category", read_only=True, allow_null=True)
+    full_text = serializers.CharField(source="context.full_text", read_only=True, allow_blank=True)
+
+    class Meta:
+        model = CampaignRecipient
+        fields = [
+            "id",
+            "campaign_id",
+            "status",
+            "email",
+            "business_name",
+            "category",
+            "website",
+            "full_text",
+            "context",
+            "subject",
+            "body_html",
+            "body_text",
+        ]
+
+
+class AICampaignRecipientContentSerializer(serializers.Serializer):
+    subject = serializers.CharField()
+    body_html = serializers.CharField()
+    body_text = serializers.CharField(required=False, allow_blank=True)
+    mark_ready = serializers.BooleanField(default=True)
+
+
+class AICampaignRecipientListSerializer(serializers.ModelSerializer):
+    campaign_id = serializers.IntegerField(source="campaign.id", read_only=True)
+    email = serializers.EmailField(source="email_address.email", read_only=True)
+    business_name = serializers.CharField(source="context.business_name", read_only=True)
+    category = serializers.CharField(source="context.category", read_only=True, allow_null=True)
+
+    class Meta:
+        model = CampaignRecipient
+        fields = [
+            "id",
+            "campaign_id",
+            "status",
+            "email",
+            "business_name",
+            "category",
+        ]
 
     # Status update serializer removed as status field is no longer present in model

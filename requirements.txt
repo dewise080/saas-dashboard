@@ -36,3 +36,6 @@ django-sql-explorer==5.3
 
 # CORS
 django-cors-headers==4.3.1
+
+# Email
+django-anymail==10.3

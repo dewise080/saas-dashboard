@@ -10,7 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.1/ref/settings/
 """
 
-import os, random, string, inspect
+import os, random, string, inspect, json
 from pathlib import Path
 from dotenv import load_dotenv
 from str2bool import str2bool
@@ -73,6 +73,10 @@ INSTALLED_APPS = [
     
     # Google Maps Leads
     "gmaps_leads",
+
+    # Email infrastructure
+    "anymail",
+    "apps.emailing",
 
     # SQL Explorer for database exploration
     "explorer",
@@ -237,7 +241,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 # Session settings - keep users logged in
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 30  # 30 days in seconds
@@ -337,3 +340,77 @@ GMAPS_SCRAPER_API_URL = os.getenv('GMAPS_SCRAPER_API_URL', 'http://localhost:808
 GMAPS_CSV_DOWNLOAD_DIR = os.path.join(BASE_DIR, 'gmaps_downloads')  # Directory for downloaded CSV files
 
 
+########################################
+# Email delivery (SMTP/ESP via Anymail)
+########################################
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", os.getenv("EMAIL_HOST_USER", "no-reply@example.com"))
+EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "smtp_primary")
+
+EMAIL_PROVIDERS = {
+    "smtp_primary": {
+        "BACKEND": os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend"),
+        "HOST": os.getenv("EMAIL_HOST", "localhost"),
+        "PORT": int(os.getenv("EMAIL_PORT", "587")),
+        "USERNAME": os.getenv("EMAIL_HOST_USER", ""),
+        "PASSWORD": os.getenv("EMAIL_HOST_PASSWORD", ""),
+        "USE_TLS": str2bool(os.getenv("EMAIL_USE_TLS", "True")),
+        "USE_SSL": str2bool(os.getenv("EMAIL_USE_SSL", "False")),
+        "FROM_EMAIL": DEFAULT_FROM_EMAIL,
+    }
+}
+
+if os.getenv("SECONDARY_EMAIL_HOST"):
+    EMAIL_PROVIDERS["smtp_secondary"] = {
+        "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+        "HOST": os.getenv("SECONDARY_EMAIL_HOST"),
+        "PORT": int(os.getenv("SECONDARY_EMAIL_PORT", "587")),
+        "USERNAME": os.getenv("SECONDARY_EMAIL_USER", ""),
+        "PASSWORD": os.getenv("SECONDARY_EMAIL_PASSWORD", ""),
+        "USE_TLS": str2bool(os.getenv("SECONDARY_EMAIL_USE_TLS", "True")),
+        "USE_SSL": str2bool(os.getenv("SECONDARY_EMAIL_USE_SSL", "False")),
+        "FROM_EMAIL": os.getenv("SECONDARY_DEFAULT_FROM_EMAIL", DEFAULT_FROM_EMAIL),
+    }
+
+providers_json = os.getenv("EMAIL_PROVIDERS_JSON")
+if providers_json:
+    try:
+        EMAIL_PROVIDERS.update(json.loads(providers_json))
+    except Exception:
+        # Invalid JSON is ignored to avoid breaking settings load
+        pass
+
+# Optional ESP configuration via django-anymail
+ANYMAIL = {
+    "SEND_DEFAULTS": {"metadata": {"app": "core"}},
+}
+anymail_provider = os.getenv("ANYMAIL_PROVIDER")
+anymail_api_key = os.getenv("ANYMAIL_API_KEY")
+if anymail_provider and anymail_api_key:
+    provider_key = anymail_provider.lower()
+    ANYMAIL[f"{provider_key.upper()}_API_KEY"] = anymail_api_key
+    api_url = os.getenv("ANYMAIL_API_URL")
+    if api_url:
+        ANYMAIL[f"{provider_key.upper()}_API_URL"] = api_url
+    EMAIL_PROVIDERS[f"esp_{provider_key}"] = {
+        "BACKEND": f"anymail.backends.{provider_key}.EmailBackend",
+        "FROM_EMAIL": DEFAULT_FROM_EMAIL,
+    }
+
+active_provider = EMAIL_PROVIDERS.get(EMAIL_PROVIDER, EMAIL_PROVIDERS.get("smtp_primary", {}))
+EMAIL_BACKEND = active_provider.get("BACKEND", "django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = active_provider.get("HOST", os.getenv("EMAIL_HOST", "localhost"))
+EMAIL_PORT = active_provider.get("PORT", int(os.getenv("EMAIL_PORT", "587")))
+EMAIL_USE_TLS = active_provider.get("USE_TLS", str2bool(os.getenv("EMAIL_USE_TLS", "True")))
+EMAIL_USE_SSL = active_provider.get("USE_SSL", str2bool(os.getenv("EMAIL_USE_SSL", "False")))
+EMAIL_HOST_USER = active_provider.get("USERNAME", os.getenv("EMAIL_HOST_USER", ""))
+EMAIL_HOST_PASSWORD = active_provider.get("PASSWORD", os.getenv("EMAIL_HOST_PASSWORD", ""))
+
+########################################
+# Chatwoot (optional, for threading replies)
+########################################
+CHATWOOT_ENABLED = str2bool(os.getenv("CHATWOOT_ENABLED", "False"))
+CHATWOOT_BASE_URL = os.getenv("CHATWOOT_BASE_URL", "").rstrip("/")
+CHATWOOT_ACCOUNT_ID = os.getenv("CHATWOOT_ACCOUNT_ID")
+CHATWOOT_INBOX_ID = os.getenv("CHATWOOT_INBOX_ID")
+CHATWOOT_API_TOKEN = os.getenv("CHATWOOT_API_TOKEN")
+CHATWOOT_API_PATH = os.getenv("CHATWOOT_API_PATH", "/api/v1")

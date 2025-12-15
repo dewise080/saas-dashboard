@@ -1,0 +1,12 @@
+#jazzy-tabs {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+#jazzy-tabs .nav-link {
+  margin-bottom: 4px;
+}
+
+.tab-content .card-body {
+  overflow-x: auto;
+}

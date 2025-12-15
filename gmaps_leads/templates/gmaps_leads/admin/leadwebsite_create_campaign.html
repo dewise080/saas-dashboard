@@ -1,0 +1,110 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<div class="card" style="max-width: 860px; margin: 0 auto;">
+  <div class="card-header">
+    <h2>Create email campaign from Lead Websites</h2>
+  </div>
+  <div class="card-body">
+    <p class="help">Build a campaign using the current LeadWebsite queryset. Categories filter (comma-separated) narrows by lead category. Dry run reports counts without creating anything.</p>
+    <form id="campaign-form" method="post" novalidate>
+      {% csrf_token %}
+      <table class="table">
+        {% for field in form %}
+          <tr>
+            <th>{{ field.label_tag }}</th>
+            <td>
+              {{ field }}
+              {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+              {% for error in field.errors %}<div class="errornote">{{ error }}</div>{% endfor %}
+            </td>
+          </tr>
+        {% endfor %}
+      </table>
+      <div class="submit-row">
+        <input type="submit" value="Run (or Dry Run)" class="default">
+        <a class="button" href="{% url 'admin:gmaps_leads_leadwebsite_changelist' %}">Cancel</a>
+      </div>
+    </form>
+    <p class="help">Current queryset size: {{ original_queryset_count }}</p>
+
+    <div id="preview-panel" class="card" style="margin-top: 16px; display:none;">
+      <div class="card-header">
+        <h3 style="margin:0;">Live Preview (dry-run only)</h3>
+      </div>
+      <div class="card-body">
+        <div id="preview-summary" class="help"></div>
+        <div id="preview-errors" class="errornote"></div>
+        <table class="table" id="preview-table" style="display:none;">
+          <thead>
+            <tr>
+              <th>Email</th><th>Business</th><th>Category</th><th>Lead ID</th><th>Website</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function() {
+  const form = document.getElementById('campaign-form');
+  const previewPanel = document.getElementById('preview-panel');
+  const previewSummary = document.getElementById('preview-summary');
+  const previewErrors = document.getElementById('preview-errors');
+  const previewTable = document.getElementById('preview-table');
+  const previewBody = previewTable.querySelector('tbody');
+
+  const debounce = (fn, delay) => {
+    let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); };
+  };
+
+  const fetchPreview = debounce(() => {
+    const formData = new FormData(form);
+    previewErrors.innerText = '';
+    fetch("{% url 'admin:gmaps_leads_leadwebsite_create_campaign_preview' %}", {
+      method: 'POST',
+      headers: { 'X-CSRFToken': formData.get('csrfmiddlewaretoken') },
+      body: formData,
+    })
+    .then(resp => resp.json().then(data => ({status: resp.status, data})))
+    .then(({status, data}) => {
+      if (status !== 200) {
+        previewSummary.innerText = '';
+        previewTable.style.display = 'none';
+        previewPanel.style.display = 'block';
+        previewErrors.innerText = Object.values(data.errors || {}).join(' ');
+        return;
+      }
+      previewPanel.style.display = 'block';
+      previewSummary.innerText = `[Dry run] Would create campaign '${data.campaign_name}' with ${data.unique_count} unique emails (${data.prepared} raw), skipped_no_email=${data.skipped_no_email}, skipped_invalid=${data.skipped_invalid}`;
+      previewErrors.innerText = '';
+      previewBody.innerHTML = '';
+      (data.sample || []).forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${row.email || ''}</td><td>${row.business_name || ''}</td><td>${row.category || ''}</td><td>${row.lead_id || ''}</td><td>${row.website || ''}</td>`;
+        previewBody.appendChild(tr);
+      });
+      previewTable.style.display = (data.sample || []).length ? 'table' : 'none';
+    })
+    .catch(err => {
+      previewPanel.style.display = 'block';
+      previewSummary.innerText = '';
+      previewErrors.innerText = 'Preview failed: ' + err;
+      previewTable.style.display = 'none';
+    });
+  }, 400);
+
+  // Auto-preview on field changes
+  Array.from(form.elements).forEach(el => {
+    if (['csrfmiddlewaretoken', 'dry_run'].includes(el.name)) return;
+    el.addEventListener('change', fetchPreview);
+    el.addEventListener('input', fetchPreview);
+  });
+  // Initial preview
+  fetchPreview();
+})();
+</script>
+{% endblock %}

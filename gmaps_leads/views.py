@@ -3,6 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_http_methods
+from django.db import models
 from django.db.models import Q
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, action
@@ -15,12 +16,18 @@ import csv
 import logging
 
 from .models import ScrapeJob, GmapsLead, CustomizedContact
+from apps.emailing.models import EmailCampaign, CampaignRecipient
 from .serializers import (
     ScrapeJobSerializer, ScrapeJobCreateSerializer,
     GmapsLeadSerializer, GmapsLeadListSerializer,
     LeadContextSerializer, 
     CustomizedContactSerializer, CustomizedContactListSerializer,
-    CustomizedContactCreateSerializer
+    CustomizedContactCreateSerializer,
+    AICampaignSerializer,
+    AICampaignRecipientStatusSerializer,
+    AICampaignRecipientContextSerializer,
+    AICampaignRecipientContentSerializer,
+    AICampaignRecipientListSerializer,
 )
 from .services import (
     create_scrape_job, refresh_job_status, import_job_results,
@@ -783,6 +790,178 @@ class LeadsWithEmailsAPIView(APIView):
         
         serializer = GmapsLeadListSerializer(leads, many=True)
         return Response(serializer.data)
+
+
+# =============================================================================
+# AI Campaign Endpoints (CampaignRecipient-centric)
+# =============================================================================
+
+
+class AICampaignListAPIView(APIView):
+    """
+    List ongoing campaigns for AI.
+    """
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        operation_id="aiListCampaigns",
+        summary="AI: List ongoing campaigns",
+        description="Returns campaigns in ready/running status (use status query param to override).",
+        parameters=[
+            OpenApiParameter(
+                name="status",
+                type=OpenApiTypes.STR,
+                description="Optional status filter (comma-separated). Default: ready,running"
+            ),
+        ],
+        responses={200: AICampaignSerializer(many=True)},
+        tags=["AI Campaigns"],
+    )
+    def get(self, request):
+        status_param = request.query_params.get("status")
+        statuses = ["ready", "running"]
+        if status_param:
+            statuses = [s.strip() for s in status_param.split(",") if s.strip()]
+        qs = EmailCampaign.objects.filter(status__in=statuses).order_by("-updated_at")
+        serializer = AICampaignSerializer(qs, many=True)
+        return Response(serializer.data)
+
+
+class AICampaignRecipientStatusAPIView(APIView):
+    """
+    Return recipient counts and IDs by status for a campaign.
+    """
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        operation_id="aiCampaignRecipientStatus",
+        summary="AI: Recipient status counts",
+        description="Returns counts and recipient IDs grouped by status. Filter with status param (comma-separated).",
+        parameters=[
+            OpenApiParameter(
+                name="status",
+                type=OpenApiTypes.STR,
+                description="Optional status filter (comma-separated). Default: pending"
+            ),
+        ],
+        responses={200: OpenApiTypes.OBJECT},
+        tags=["AI Campaigns"],
+    )
+    def get(self, request, campaign_id):
+        campaign = get_object_or_404(EmailCampaign, pk=campaign_id)
+        status_param = request.query_params.get("status")
+        statuses = ["pending"]
+        if status_param:
+            statuses = [s.strip() for s in status_param.split(",") if s.strip()]
+
+        response = {"campaign_id": campaign.id, "statuses": {}}
+        for st in statuses:
+            ids = list(
+                campaign.recipients.filter(status=st)
+                .order_by("id")
+                .values_list("id", flat=True)
+            )
+            response["statuses"][st] = {"count": len(ids), "ids": ids}
+
+        return Response(response)
+
+
+class AICampaignRecipientContextAPIView(APIView):
+    """
+    Fetch campaign recipient context for AI rendering.
+    """
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        operation_id="aiGetCampaignRecipientContext",
+        summary="AI: Get campaign recipient context",
+        description="Returns recipient context (lead/company/site text) for AI to render personalized email.",
+        responses={200: AICampaignRecipientContextSerializer},
+        tags=["AI Campaigns"],
+    )
+    def get(self, request, campaign_id, recipient_id):
+        recipient = get_object_or_404(
+            CampaignRecipient.objects.select_related("campaign", "email_address", "recipient"),
+            pk=recipient_id,
+            campaign_id=campaign_id,
+        )
+        serializer = AICampaignRecipientContextSerializer(recipient)
+        return Response(serializer.data)
+
+class AICampaignRecipientListAPIView(APIView):
+    """
+    List campaign recipients (filterable by status).
+    """
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        operation_id="aiListCampaignRecipients",
+        summary="AI: List campaign recipients",
+        description="Returns recipients for a campaign. Filter by status and limit for batching.",
+        parameters=[
+            OpenApiParameter(
+                name="status",
+                type=OpenApiTypes.STR,
+                description="Optional status filter (comma-separated). Default: pending"
+            ),
+            OpenApiParameter(
+                name="limit",
+                type=OpenApiTypes.INT,
+                description="Max results (default 50)"
+            ),
+        ],
+        responses={200: AICampaignRecipientListSerializer(many=True)},
+        tags=["AI Campaigns"],
+    )
+    def get(self, request, campaign_id):
+        campaign = get_object_or_404(EmailCampaign, pk=campaign_id)
+        status_param = request.query_params.get("status")
+        statuses = ["pending"]
+        if status_param:
+            statuses = [s.strip() for s in status_param.split(",") if s.strip()]
+        limit = request.query_params.get("limit")
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            limit = 50
+        qs = campaign.recipients.select_related("email_address", "recipient").filter(status__in=statuses).order_by("id")[:limit]
+        serializer = AICampaignRecipientListSerializer(qs, many=True)
+        return Response(serializer.data)
+
+
+class AICampaignRecipientContentAPIView(APIView):
+    """
+    Submit rendered content for a campaign recipient.
+    """
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        operation_id="aiSubmitCampaignRecipientContent",
+        summary="AI: Submit rendered email content",
+        description="Attach subject/body to a campaign recipient. Sets status to ready when mark_ready=true (default).",
+        request=AICampaignRecipientContentSerializer,
+        responses={200: AICampaignRecipientContextSerializer},
+        tags=["AI Campaigns"],
+    )
+    def post(self, request, campaign_id, recipient_id):
+        recipient = get_object_or_404(
+            CampaignRecipient.objects.select_related("campaign"),
+            pk=recipient_id,
+            campaign_id=campaign_id,
+        )
+        serializer = AICampaignRecipientContentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        recipient.subject = data["subject"]
+        recipient.body_html = data["body_html"]
+        recipient.body_text = data.get("body_text") or ""
+        if data.get("mark_ready", True):
+            recipient.status = CampaignRecipient.STATUS_READY
+        recipient.save(update_fields=["subject", "body_html", "body_text", "status", "updated_at"])
+
+        out = AICampaignRecipientContextSerializer(recipient)
+        return Response(out.data)
 
 
 class ContactableLeadsAPIView(APIView):

@@ -1,15 +1,26 @@
 from django.contrib import admin
 from django.utils.html import format_html
+from django.utils.text import slugify
+from django.utils import timezone
 from django.urls import reverse, path
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.http import HttpResponseRedirect
+from django.http import HttpResponseRedirect, JsonResponse
 from django.db import models
 from django.db.models import Q
 from django import forms
+from django.contrib.admin.helpers import ActionForm
 from ckeditor.widgets import CKEditorWidget
 from .models import ScrapeJob, GmapsLead, WhatsAppContact, LeadWebsite, CustomizedContact
 from .services import create_scrape_job, refresh_job_status, import_job_results, GmapsScraperService
+from apps.emailing.models import (
+    EmailCampaign,
+    EmailTemplate,
+    Recipient,
+    EmailAddress,
+    CampaignRecipient,
+)
+from django.conf import settings
 
 
 # Custom Filters
@@ -586,6 +597,85 @@ class AIProcessedFilter(admin.SimpleListFilter):
             return queryset.filter(ai_processed_at__isnull=True)
         return queryset
 
+# Action form (with admin action field)
+class LeadWebsiteCampaignActionForm(ActionForm):
+    campaign_name = forms.CharField(required=False, label="Campaign name")
+    template = forms.ModelChoiceField(
+        queryset=EmailTemplate.objects.filter(is_active=True),
+        required=False,
+        label="Email template (optional)"
+    )
+    provider_alias = forms.ChoiceField(
+        required=False,
+        label="Provider alias",
+        choices=[],
+    )
+    jobs = forms.MultipleChoiceField(
+        required=False,
+        label="Filter by jobs",
+        choices=[],
+        help_text="Select one or more jobs (filters by lead__job).",
+    )
+    fallback_to_lead_emails = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Fallback to lead.emails when website has none"
+    )
+    dry_run = forms.BooleanField(
+        required=False,
+        initial=False,
+        label="Dry run (no records created)"
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        providers = getattr(settings, "EMAIL_PROVIDERS", {}) or {}
+        choices = [("", "Default from settings")]
+        choices += [(alias, alias) for alias in providers.keys()]
+        self.fields["provider_alias"].choices = choices
+        jobs = ScrapeJob.objects.all().values_list("id", "name")
+        self.fields["jobs"].choices = [(j_id, name) for j_id, name in jobs]
+
+
+# Standalone page form (no admin action field)
+class LeadWebsiteCampaignPageForm(forms.Form):
+    campaign_name = forms.CharField(required=False, label="Campaign name")
+    template = forms.ModelChoiceField(
+        queryset=EmailTemplate.objects.filter(is_active=True),
+        required=False,
+        label="Email template (optional)"
+    )
+    provider_alias = forms.ChoiceField(
+        required=False,
+        label="Provider alias",
+        choices=[],
+    )
+    jobs = forms.MultipleChoiceField(
+        required=False,
+        label="Filter by jobs",
+        choices=[],
+        help_text="Select one or more jobs (filters by lead__job).",
+    )
+    fallback_to_lead_emails = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Fallback to lead.emails when website has none"
+    )
+    dry_run = forms.BooleanField(
+        required=False,
+        initial=False,
+        label="Dry run (no records created)"
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        providers = getattr(settings, "EMAIL_PROVIDERS", {}) or {}
+        choices = [("", "Default from settings")]
+        choices += [(alias, alias) for alias in providers.keys()]
+        self.fields["provider_alias"].choices = choices
+        jobs = ScrapeJob.objects.all().values_list("id", "name")
+        self.fields["jobs"].choices = [(j_id, name) for j_id, name in jobs]
+
 
 @admin.register(LeadWebsite)
 class LeadWebsiteAdmin(admin.ModelAdmin):
@@ -605,7 +695,9 @@ class LeadWebsiteAdmin(admin.ModelAdmin):
         'scraped_at', 'created_at', 'updated_at'
     ]
     list_per_page = 50
-    actions = ['scrape_selected', 'rescrape_selected', 'export_emails']
+    actions = ['scrape_selected', 'rescrape_selected', 'export_emails', 'create_email_campaign']
+    action_form = LeadWebsiteCampaignActionForm
+    change_list_template = "gmaps_leads/admin/leadwebsite_change_list.html"
     
     fieldsets = (
         ('Lead Info', {
@@ -795,6 +887,280 @@ class LeadWebsiteAdmin(admin.ModelAdmin):
             messages.info(request, f'Emails ({len(unique_emails)}): {", ".join(unique_emails[:20])}{"..." if len(unique_emails) > 20 else ""}')
         else:
             messages.warning(request, 'No emails found in selected websites')
+
+    @admin.action(description='✉️ Create email campaign from selected')
+    def create_email_campaign(self, request, queryset):
+        """Build an EmailCampaign + CampaignRecipients from LeadWebsite rows with optional dry run."""
+        form = LeadWebsiteCampaignActionForm(request.POST or None)
+        if not form.is_valid():
+            messages.error(request, "Invalid form data for campaign creation.")
+            return
+        summary = self._build_campaign_from_queryset(request, queryset, form.cleaned_data)
+        self._notify_summary(request, summary)
+        return
+
+    # Shared helpers
+    def _notify_summary(self, request, summary):
+        if summary["dry_run"]:
+            messages.info(
+                request,
+                f"[Dry run] Would create campaign '{summary['campaign_name']}' with {summary['unique_count']} unique emails "
+                f"({summary['prepared']} raw), skipped_no_email={summary['skipped_no_email']}, "
+                f"skipped_invalid={summary['skipped_invalid']}",
+            )
+        else:
+            messages.success(
+                request,
+                f"Campaign '{summary['campaign_name']}' ready with {summary['unique_count']} unique emails "
+                f"(created/prepared={summary['prepared']}, skipped_no_email={summary['skipped_no_email']}, "
+                f"skipped_invalid={summary['skipped_invalid']}).",
+            )
+
+    def _build_campaign_from_queryset(self, request, queryset, options, *, preview=False, sample_limit=50, force_dry_run=False):
+        campaign_name = options.get("campaign_name") or f"Lead Campaign {timezone.now():%Y%m%d%H%M}"
+        provider_alias = options.get("provider_alias") or getattr(settings, "EMAIL_PROVIDER", "")
+        template = options.get("template")
+        jobs_raw = options.get("jobs", [])
+        fallback_to_lead_emails = options.get("fallback_to_lead_emails")
+        dry_run = force_dry_run or options.get("dry_run")
+
+        # jobs filter
+        if jobs_raw:
+            try:
+                job_ids = [int(j) for j in jobs_raw]
+                queryset = queryset.filter(lead__job__in=job_ids)
+            except Exception:
+                pass
+
+        if queryset.count() == 0:
+            return {
+                "dry_run": dry_run,
+                "campaign_name": campaign_name,
+                "unique_count": 0,
+                "prepared": 0,
+                "skipped_no_email": 0,
+                "skipped_invalid": 0,
+                "sample": [],
+            }
+
+        unique_emails = set()
+        skipped_no_email = 0
+        skipped_invalid = 0
+        prepared = 0
+        sample = []
+
+        def iter_emails(website):
+            emails = website.emails if isinstance(website.emails, list) else []
+            if not emails and fallback_to_lead_emails and website.lead and website.lead.emails:
+                # lead.emails stored as CSV/text
+                raw = website.lead.emails
+                if raw:
+                    for piece in str(raw).replace(";", ",").split(","):
+                        piece = piece.strip()
+                        if piece:
+                            emails.append(piece)
+            return emails
+
+        # Dry run: only count prospective recipients
+        if dry_run:
+            for website in queryset:
+                emails = iter_emails(website)
+                if not emails:
+                    skipped_no_email += 1
+                    continue
+                for email in emails:
+                    norm = email.strip().lower()
+                    if "@" not in norm:
+                        skipped_invalid += 1
+                        continue
+                    unique_emails.add(norm)
+                    prepared += 1
+                    if preview and len(sample) < sample_limit:
+                        sample.append(
+                            {
+                                "email": norm,
+                                "business_name": website.lead.title if website.lead else "",
+                                "category": website.lead.category if website.lead else "",
+                                "lead_id": website.lead.id if website.lead else None,
+                                "website": website.url,
+                            }
+                        )
+            return {
+                "dry_run": True,
+                "campaign_name": campaign_name,
+                "unique_count": len(unique_emails),
+                "prepared": prepared,
+                "skipped_no_email": skipped_no_email,
+                "skipped_invalid": skipped_invalid,
+                "sample": sample,
+            }
+
+        slug = slugify(campaign_name)[:200] or f"campaign-{timezone.now():%Y%m%d%H%M%S}"
+        campaign, created = EmailCampaign.objects.get_or_create(
+            slug=slug,
+            defaults={
+                "name": campaign_name,
+                "template": template,
+                "provider_alias": provider_alias,
+                "status": "ready",
+                "metadata": {"source": "lead_website_admin_action", "jobs": jobs_raw},
+            },
+        )
+        if not created:
+            # Update template/provider if existing slug reused
+            campaign.template = template
+            campaign.provider_alias = provider_alias
+            campaign.metadata = {**(campaign.metadata or {}), "updated_from_admin_action": True, "jobs": jobs_raw}
+            campaign.save(update_fields=["template", "provider_alias", "metadata", "updated_at"])
+
+        for website in queryset.select_related("lead"):
+            emails = iter_emails(website)
+            if not emails:
+                skipped_no_email += 1
+                continue
+            lead = website.lead
+            for email in emails:
+                norm = email.strip().lower()
+                if "@" not in norm:
+                    skipped_invalid += 1
+                    continue
+                if norm in unique_emails:
+                    continue
+                unique_emails.add(norm)
+                if preview and len(sample) < sample_limit:
+                    sample.append(
+                        {
+                            "email": norm,
+                            "business_name": lead.title if lead else "",
+                            "category": lead.category if lead else "",
+                            "lead_id": lead.id if lead else None,
+                            "website": website.url,
+                        }
+                    )
+
+                recipient, _ = Recipient.objects.get_or_create(
+                    company=lead.title,
+                    defaults={
+                        "first_name": "",
+                        "last_name": "",
+                        "metadata": {"lead_id": lead.id},
+                    },
+                )
+                email_obj, _ = EmailAddress.objects.get_or_create(
+                    recipient=recipient,
+                    email=norm,
+                    defaults={
+                        "label": "website",
+                        "is_primary": False,
+                        "is_verified": True,
+                        "is_active": True,
+                        "metadata": {"lead_id": lead.id, "website_id": website.id},
+                    },
+                )
+                context = {
+                    "lead_id": lead.id,
+                    "business_name": lead.title,
+                    "category": lead.category,
+                    "website": website.url,
+                    "page_title": website.page_title,
+                    "meta_description": website.meta_description,
+                    "full_text": (website.full_text or "")[:4000] if website.full_text else "",
+                    "location": lead.address,
+                }
+                CampaignRecipient.objects.get_or_create(
+                    campaign=campaign,
+                    email_address=email_obj,
+                    defaults={
+                        "recipient": recipient,
+                        "status": CampaignRecipient.STATUS_PENDING,
+                        "context": context,
+                    },
+                )
+                prepared += 1
+
+        campaign.expected_recipients = len(unique_emails)
+        campaign.refresh_counters(commit=True)
+        campaign.save(update_fields=["expected_recipients", "updated_at"])
+
+        return {
+            "dry_run": False,
+            "campaign_name": campaign.name,
+            "unique_count": len(unique_emails),
+            "prepared": prepared,
+            "skipped_no_email": skipped_no_email,
+            "skipped_invalid": skipped_invalid,
+            "sample": sample,
+        }
+
+    # Custom admin view for cleaner UI
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "create-campaign/",
+                self.admin_site.admin_view(self.create_campaign_view),
+                name="gmaps_leads_leadwebsite_create_campaign",
+            ),
+            path(
+                "create-campaign/preview/",
+                self.admin_site.admin_view(self.create_campaign_preview),
+                name="gmaps_leads_leadwebsite_create_campaign_preview",
+            ),
+        ]
+        return custom_urls + urls
+
+    def create_campaign_view(self, request):
+        qs = self.get_queryset(request)
+        form = LeadWebsiteCampaignPageForm(request.POST or None)
+        summary = None
+        if request.method == "POST":
+            if form.is_valid():
+                summary = self._build_campaign_from_queryset(request, qs, form.cleaned_data)
+                self._notify_summary(request, summary)
+                if not summary["dry_run"]:
+                    return redirect("admin:gmaps_leads_leadwebsite_changelist")
+            else:
+                messages.error(request, "Please correct the errors below.")
+
+        context = dict(
+            self.admin_site.each_context(request),
+            title="Create email campaign from Lead Websites",
+            form=form,
+            opts=self.model._meta,
+            original_queryset_count=qs.count(),
+        )
+        return render(request, "gmaps_leads/admin/leadwebsite_create_campaign.html", context)
+
+    def create_campaign_preview(self, request):
+        qs = self.get_queryset(request)
+        form = LeadWebsiteCampaignPageForm(request.POST or None)
+        if not form.is_valid():
+            return JsonResponse({"errors": form.errors}, status=400)
+        summary = self._build_campaign_from_queryset(
+            request,
+            qs,
+            form.cleaned_data,
+            preview=True,
+            sample_limit=50,
+            force_dry_run=True,
+        )
+        return JsonResponse(
+            {
+                "campaign_name": summary["campaign_name"],
+                "unique_count": summary["unique_count"],
+                "prepared": summary["prepared"],
+                "skipped_no_email": summary["skipped_no_email"],
+                "skipped_invalid": summary["skipped_invalid"],
+                "sample": summary["sample"],
+            }
+        )
+
+    class Media:
+        """Admin-only assets to keep tabs usable on all browsers."""
+        js = ('gmaps_leads/js/leadwebsite_admin.js',)
+        css = {'all': ('gmaps_leads/css/leadwebsite_admin.css',)}
+
+# Action form for campaign creation on LeadWebsite
 
 
 # =============================================================================
