@@ -12,6 +12,7 @@ django-ckeditor==6.7.0
 django-debug-toolbar==4.4.6
 djangorestframework==3.15.2
 drf-spectacular==0.29.0
+django-import-export==4.3.14
 requests==2.32.3
 pandas==2.2.3
 graphviz==0.20.3

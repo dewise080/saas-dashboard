@@ -3,6 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_http_methods
+from django.utils import timezone
 from django.db import models
 from django.db.models import Q
 from rest_framework import viewsets, status
@@ -14,8 +15,22 @@ from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiPara
 from drf_spectacular.types import OpenApiTypes
 import csv
 import logging
+import random
+import time
 
-from .models import ScrapeJob, GmapsLead, CustomizedContact
+from .models import (
+    ScrapeJob,
+    GmapsLead,
+    CustomizedContact,
+    WhatsAppContact,
+    ChatwootContactSync,
+    WhatsAppCampaign,
+    WhatsAppCampaignRecipient,
+    WhatsAppTemplatePool,
+    WhatsAppTemplate,
+)
+from .whatsapp_campaigns import prepare_campaign_recipients
+from .whatsapp_campaigns import compose_whatsapp_text
 from apps.emailing.models import EmailCampaign, CampaignRecipient
 from .serializers import (
     ScrapeJobSerializer, ScrapeJobCreateSerializer,
@@ -28,12 +43,63 @@ from .serializers import (
     AICampaignRecipientContextSerializer,
     AICampaignRecipientContentSerializer,
     AICampaignRecipientListSerializer,
+    WahaContactSyncSerializer,
+    ChatwootContactSyncSerializer,
+    WahaSendMessageSerializer,
+    WahaTestMessageSerializer,
+    WhatsAppCampaignSerializer,
+    WhatsAppCampaignRecipientSerializer,
+    WhatsAppTemplatePoolSerializer,
+    WhatsAppTemplateSerializer,
 )
 from .services import (
     create_scrape_job, refresh_job_status, import_job_results,
     GmapsScraperService
 )
 from .signals import email_template_ready, email_template_approved
+from .waha_client import WahaClient, WahaClientError
+from .waha_test_messages import run_test_message
+from .models import AIMemory
+from .serializers import AIMemorySerializer
+
+
+# Simple API for AI Assistant Memory
+from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
+
+class AIMemoryListCreateAPIView(APIView):
+    """GET: List all memories. POST: Create a new memory (note or progress)."""
+    permission_classes = [AllowAny]
+    serializer_class = AIMemorySerializer
+
+    @extend_schema(
+        operation_id="ai_memory_list",
+        summary="List AI memories",
+        responses=AIMemorySerializer(many=True),
+        tags=["AI Assistant Memory"],
+    )
+    def get(self, request):
+        memories = AIMemory.objects.all().order_by('-created_at')
+        serializer = AIMemorySerializer(memories, many=True)
+        return Response(serializer.data)
+
+    @extend_schema(
+        operation_id="ai_memory_create",
+        summary="Create AI memory",
+        request=AIMemorySerializer,
+        responses=AIMemorySerializer,
+        tags=["AI Assistant Memory"],
+    )
+    def post(self, request):
+        data = request.data
+        # Accept both top-level and nested 'params' dict
+        if 'params' in data and isinstance(data['params'], dict):
+            data = data['params']
+        serializer = AIMemorySerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+from apps.emailing.chatwoot import ChatwootClient
 
 logger = logging.getLogger(__name__)
 
@@ -844,7 +910,7 @@ class AICampaignRecipientStatusAPIView(APIView):
                 description="Optional status filter (comma-separated). Default: pending"
             ),
         ],
-        responses={200: OpenApiTypes.OBJECT},
+        responses={200: AICampaignRecipientStatusSerializer},
         tags=["AI Campaigns"],
     )
     def get(self, request, campaign_id):
@@ -1003,3 +1069,656 @@ class ContactableLeadsAPIView(APIView):
         leads = leads.order_by('-id')[:limit]
         serializer = GmapsLeadListSerializer(leads, many=True)
         return Response(serializer.data)
+
+
+# =============================================================================
+# WAHA Integration
+# =============================================================================
+
+
+class WahaHealthAPIView(APIView):
+    """Lightweight health probe against the configured WAHA instance."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(exclude=True)
+    def get(self, request):
+        try:
+            client = WahaClient()
+        except WahaClientError as exc:
+            return Response(
+                {"ok": False, "configured": False, "error": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as exc:
+            return Response(
+                {"ok": False, "configured": False, "error": str(exc)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        result = client.health()
+        result["configured"] = True
+        http_status = status.HTTP_200_OK if result.get("ok") else status.HTTP_502_BAD_GATEWAY
+        return Response(result, status=http_status)
+
+
+class WahaContactSyncAPIView(APIView):
+    """
+    Create/refresh WhatsAppContact records from WhatsApp-eligible leads and push them to WAHA.
+    Supports dry-run to inspect the outgoing payload without calling WAHA.
+    """
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(exclude=True)
+    def post(self, request):
+        serializer = WahaContactSyncSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        limit = data.get("limit") or 100
+        job_id = data.get("job_id")
+        dry_run = data.get("dry_run", True)
+        skip_synced = data.get("skip_synced", True)
+        skip_synced = data.get("skip_synced", True)
+        force_refresh = data.get("force_refresh", False)
+
+        leads_qs = GmapsLead.objects.filter(phone__isnull=False).exclude(phone="").select_related("job")
+        if job_id:
+            leads_qs = leads_qs.filter(job_id=job_id)
+
+        prepared = []
+        created_contacts = 0
+        reused_contacts = 0
+        errors = []
+        scanned = 0
+
+        for lead in leads_qs.order_by("-id"):
+            if lead.phone_type != "whatsapp":
+                continue
+            scanned += 1
+            if len(prepared) >= limit:
+                break
+
+            try:
+                contact = getattr(lead, "whatsapp_contact", None)
+                if contact and force_refresh:
+                    phone = lead.cleaned_phone
+                    contact.phone_number = phone
+                    contact.chat_id = f"{phone}@c.us"
+                    contact.jid = f"{phone}@s.whatsapp.net"
+                    contact.business_name = lead.title
+                    contact.category = lead.category
+                    contact.save()
+                elif not contact:
+                    contact = WhatsAppContact.create_from_lead(lead)
+                    created_contacts += 1
+                else:
+                    reused_contacts += 1
+
+                prepared.append({
+                    "name": contact.business_name or lead.title,
+                    "phone": contact.phone_number,
+                    "chatId": contact.chat_id,
+                    "jid": contact.jid,
+                    "category": contact.category or lead.category,
+                    "lead_id": lead.id,
+                })
+            except Exception as exc:
+                errors.append({"lead_id": lead.id, "error": str(exc)})
+                continue
+
+        summary = {
+            "dry_run": dry_run,
+            "job_id": job_id,
+            "limit": limit,
+            "scanned": scanned,
+            "prepared": len(prepared),
+            "created_contacts": created_contacts,
+            "reused_contacts": reused_contacts,
+            "errors": errors,
+            "payload_preview": prepared[: min(5, len(prepared))],
+        }
+
+        if dry_run or not prepared:
+            status_code = status.HTTP_200_OK if not errors else status.HTTP_206_PARTIAL_CONTENT
+            summary["message"] = "Dry run - no call made to WAHA." if dry_run else "No contacts prepared."
+            return Response(summary, status=status_code)
+
+        try:
+            client = WahaClient()
+        except WahaClientError as exc:
+            summary["waha"] = {"success": False, "configured": False, "error": str(exc)}
+            return Response(summary, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            summary["waha"] = {"success": False, "configured": True, "error": str(exc)}
+            return Response(summary, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        waha_result = client.sync_contacts(prepared)
+        summary["waha"] = waha_result
+        http_status = status.HTTP_200_OK if waha_result.get("success") else status.HTTP_502_BAD_GATEWAY
+        return Response(summary, status=http_status)
+
+
+class WahaSendMessageAPIView(APIView):
+    """Send a WhatsApp text message via WAHA."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Send WhatsApp text via WAHA",
+        request=WahaSendMessageSerializer,
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    def post(self, request):
+        serializer = WahaSendMessageSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        chat_id = data.get("chat_id")
+        phone = data.get("phone")
+        lead_id = data.get("lead_id")
+        text = data["text"]
+        quoted_message_id = data.get("quoted_message_id") or None
+        resolved_lead_id = None
+
+        # Resolve chatId from lead if provided
+        if lead_id and not chat_id:
+            lead = get_object_or_404(GmapsLead, pk=lead_id)
+            resolved_lead_id = lead.id
+            contact = getattr(lead, "whatsapp_contact", None)
+            if not contact:
+                if lead.phone_type != "whatsapp":
+                    return Response(
+                        {"error": "Lead phone is not WhatsApp eligible."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                contact = WhatsAppContact.create_from_lead(lead)
+            chat_id = contact.chat_id
+            phone = contact.phone_number
+
+        # If only phone provided, format to chatId
+        if not chat_id and phone:
+            digits = "".join(c for c in str(phone) if c.isdigit())
+            if not digits:
+                return Response({"error": "Phone is invalid; digits are required."}, status=status.HTTP_400_BAD_REQUEST)
+            chat_id = f"{digits}@c.us"
+            phone = digits
+
+        if not chat_id:
+            return Response({"error": "Unable to resolve chat_id."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            client = WahaClient()
+        except WahaClientError as exc:
+            return Response(
+                {"error": "WAHA is not configured", "details": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as exc:
+            return Response(
+                {"error": "Failed to initialize WAHA client", "details": str(exc)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        result = client.send_text(chat_id=chat_id, text=text, quoted_message_id=quoted_message_id, phone=phone)
+        status_code = status.HTTP_200_OK if result.get("success") else status.HTTP_502_BAD_GATEWAY
+        return Response(
+            {
+                "chat_id": chat_id,
+                "phone": phone,
+                "lead_id": resolved_lead_id or lead_id,
+                "quoted_message_id": quoted_message_id,
+                "text_preview": text[:120],
+                "waha": result,
+            },
+            status=status_code,
+        )
+
+
+class WahaTestMessageAPIView(APIView):
+    """
+    Test helper: preview (dry_run) or send a single message using template pools/templates/campaigns.
+    """
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Preview or send a test WhatsApp message via WAHA",
+        request=WahaTestMessageSerializer,
+        responses={200: OpenApiTypes.OBJECT, 206: OpenApiTypes.OBJECT, 400: OpenApiTypes.OBJECT},
+    )
+    def post(self, request):
+        serializer = WahaTestMessageSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            result = run_test_message(data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        status_code = status.HTTP_200_OK
+        if not result.get("dry_run") and not (result.get("waha") or {}).get("success"):
+            status_code = status.HTTP_502_BAD_GATEWAY
+        return Response(result, status=status_code)
+
+
+# =============================================================================
+# WhatsApp Campaigns (WAHA)
+# =============================================================================
+
+
+class WhatsAppCampaignAPIView(APIView):
+    """Create/list WhatsApp campaigns scoped by scrape job."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="List WhatsApp campaigns",
+        responses=WhatsAppCampaignSerializer(many=True),
+        parameters=[
+            OpenApiParameter("job_id", OpenApiTypes.INT, OpenApiParameter.QUERY, description="Filter by scrape job id"),
+        ],
+    )
+    def get(self, request):
+        job_id = request.query_params.get("job_id")
+        qs = WhatsAppCampaign.objects.all().select_related("job")
+        if job_id:
+            qs = qs.filter(job_id=job_id)
+        return Response(WhatsAppCampaignSerializer(qs, many=True).data)
+
+    @extend_schema(
+        summary="Create WhatsApp campaign",
+        request=WhatsAppCampaignSerializer,
+        responses=WhatsAppCampaignSerializer,
+    )
+    def post(self, request):
+        serializer = WhatsAppCampaignSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        campaign = serializer.save(created_by=getattr(request, "user", None) if getattr(request, "user", None).is_authenticated else None)
+        return Response(WhatsAppCampaignSerializer(campaign).data, status=status.HTTP_201_CREATED)
+
+
+class WhatsAppTemplatePoolAPIView(APIView):
+    """List/create WhatsApp template pools."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="List WhatsApp template pools",
+        responses=WhatsAppTemplatePoolSerializer(many=True),
+        parameters=[OpenApiParameter("job_id", OpenApiTypes.INT, OpenApiParameter.QUERY, description="Filter by job id")],
+    )
+    def get(self, request):
+        job_id = request.query_params.get("job_id")
+        qs = WhatsAppTemplatePool.objects.all()
+        if job_id:
+            qs = qs.filter(job_id=job_id)
+        return Response(WhatsAppTemplatePoolSerializer(qs, many=True).data)
+
+    @extend_schema(
+        summary="Create WhatsApp template pool",
+        request=WhatsAppTemplatePoolSerializer,
+        responses=WhatsAppTemplatePoolSerializer,
+    )
+    def post(self, request):
+        serializer = WhatsAppTemplatePoolSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        pool = serializer.save()
+        return Response(WhatsAppTemplatePoolSerializer(pool).data, status=status.HTTP_201_CREATED)
+
+
+class WhatsAppTemplateAPIView(APIView):
+    """List/create WhatsApp templates."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="List WhatsApp templates",
+        responses=WhatsAppTemplateSerializer(many=True),
+        parameters=[OpenApiParameter("pool_id", OpenApiTypes.INT, OpenApiParameter.QUERY, description="Filter by pool id")],
+    )
+    def get(self, request):
+        pool_id = request.query_params.get("pool_id")
+        qs = WhatsAppTemplate.objects.select_related("pool")
+        if pool_id:
+            qs = qs.filter(pool_id=pool_id)
+        return Response(WhatsAppTemplateSerializer(qs, many=True).data)
+
+    @extend_schema(
+        summary="Create WhatsApp template",
+        request=WhatsAppTemplateSerializer,
+        responses=WhatsAppTemplateSerializer,
+    )
+    def post(self, request):
+        serializer = WhatsAppTemplateSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        template = serializer.save()
+        return Response(WhatsAppTemplateSerializer(template).data, status=status.HTTP_201_CREATED)
+
+
+class WhatsAppCampaignRunAPIView(APIView):
+    """Run a WhatsApp campaign: build recipients from job leads, then send with jitter and throttle."""
+
+    permission_classes = [AllowAny]
+    serializer_class = WhatsAppCampaignSerializer
+
+    @extend_schema(
+        summary="Run WhatsApp campaign",
+        responses={200: OpenApiTypes.OBJECT, 206: OpenApiTypes.OBJECT, 400: OpenApiTypes.OBJECT},
+    )
+    def post(self, request, campaign_id: int):
+        campaign = get_object_or_404(WhatsAppCampaign.objects.select_related("job"), pk=campaign_id)
+        if campaign.status == "running":
+            return Response({"error": "Campaign already running."}, status=status.HTTP_400_BAD_REQUEST)
+        if campaign.status == "done":
+            return Response({"error": "Campaign already completed."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Ensure recipients exist before sending (no overwrite by default)
+        prep = prepare_campaign_recipients(campaign)
+        errors: list[dict] = prep.get("errors", [])
+        pending_qs = campaign.recipients.select_related("whatsapp_contact").filter(status="pending").order_by("id")
+        total = pending_qs.count()
+        if total == 0:
+            return Response(
+                {"error": "No pending recipients to send.", "prepare": prep},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        campaign.status = "running"
+        campaign.last_error = None
+        campaign.save(update_fields=["status", "last_error", "updated_at"])
+
+        throttle = max(campaign.throttle_per_minute or 1, 1)
+        min_interval = 60.0 / float(throttle)
+        delay_min = max(campaign.delay_min_ms or 0, 0) / 1000.0
+        delay_max = max(campaign.delay_max_ms or delay_min, delay_min) / 1000.0
+
+        sent = 0
+        failed = 0
+
+        try:
+            client = WahaClient()
+        except Exception as exc:  # noqa: BLE001
+            campaign.status = "failed"
+            campaign.last_error = str(exc)
+            campaign.save(update_fields=["status", "last_error", "updated_at"])
+            return Response({"error": "Failed to init WAHA client", "details": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        for recipient in pending_qs.iterator():
+            # Respect random delay and throttle
+            jitter = random.uniform(delay_min, delay_max)
+            sleep_time = max(jitter, min_interval)
+            time.sleep(sleep_time)
+
+            contact = recipient.whatsapp_contact
+            chat_id = getattr(contact, "chat_id", None)
+            if not chat_id:
+                recipient.status = "failed"
+                recipient.error = "Missing chat_id"
+                recipient.attempts += 1
+                recipient.save(update_fields=["status", "error", "attempts", "updated_at"])
+                failed += 1
+                continue
+
+            try:
+                text_to_send = compose_whatsapp_text(recipient.rendered_text or "", recipient.media_url)
+                result = client.send_text(chat_id=chat_id, text=text_to_send)
+                recipient.attempts += 1
+                if result.get("success"):
+                    recipient.status = "sent"
+                    recipient.message_id = result.get("response", {}).get("id")
+                    recipient.error = None
+                    recipient.sent_at = timezone.now()
+                    sent += 1
+                else:
+                    recipient.status = "failed"
+                    recipient.error = str(result)
+                    failed += 1
+                recipient.save(update_fields=["status", "message_id", "error", "sent_at", "attempts", "updated_at"])
+            except Exception as exc:  # noqa: BLE001
+                recipient.status = "failed"
+                recipient.error = str(exc)
+                recipient.attempts += 1
+                recipient.save(update_fields=["status", "error", "attempts", "updated_at"])
+                failed += 1
+
+        campaign.status = "done" if failed == 0 else "failed"
+        campaign.last_error = None if failed == 0 else f"{failed} failed out of {total}"
+        campaign.save(update_fields=["status", "last_error", "updated_at"])
+
+        return Response(
+            {
+                "campaign_id": campaign.id,
+                "job_id": campaign.job_id,
+                "total": total,
+                "sent": sent,
+                "failed": failed,
+                "prepare": {k: prep.get(k) for k in ("created_contacts", "created_recipients", "updated_recipients", "skipped_non_whatsapp", "total_recipients")},
+                "errors": errors[:10],
+            },
+            status=status.HTTP_200_OK if failed == 0 else status.HTTP_206_PARTIAL_CONTENT,
+        )
+
+
+class WhatsAppCampaignPrepareAPIView(APIView):
+    """Generate recipients for a campaign without sending."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Prepare WhatsApp campaign recipients",
+        request=OpenApiTypes.OBJECT,
+        responses={200: OpenApiTypes.OBJECT, 400: OpenApiTypes.OBJECT},
+    )
+    def post(self, request, campaign_id: int):
+        campaign = get_object_or_404(WhatsAppCampaign.objects.select_related("job"), pk=campaign_id)
+        data = request.data or {}
+        limit = data.get("limit")
+        overwrite = bool(data.get("overwrite", False))
+        try:
+            limit_int = int(limit) if limit is not None else None
+        except (TypeError, ValueError):
+            return Response({"error": "limit must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
+
+        prep = prepare_campaign_recipients(campaign, limit=limit_int, overwrite=overwrite)
+        return Response(prep, status=status.HTTP_200_OK if not prep.get("errors") else status.HTTP_206_PARTIAL_CONTENT)
+
+
+class WhatsAppCampaignRecipientsAPIView(APIView):
+    """List recipients for a campaign."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="List WhatsApp campaign recipients",
+        responses=WhatsAppCampaignRecipientSerializer(many=True),
+    )
+    def get(self, request, campaign_id: int):
+        campaign = get_object_or_404(WhatsAppCampaign, pk=campaign_id)
+        recips = campaign.recipients.select_related("lead").order_by("-id")
+        return Response(WhatsAppCampaignRecipientSerializer(recips, many=True).data)
+
+
+# =============================================================================
+# Chatwoot Sync
+# =============================================================================
+
+
+def _first_email_from_lead(lead: GmapsLead) -> str | None:
+    if not lead.emails:
+        return None
+    try:
+        import json
+        parsed = json.loads(lead.emails) if isinstance(lead.emails, str) else lead.emails
+        if isinstance(parsed, list):
+            return parsed[0] if parsed else None
+        if isinstance(parsed, str):
+            return parsed
+    except Exception:
+        pass
+    return None
+
+
+def _emails_from_lead(lead: GmapsLead) -> list[str]:
+    emails = []
+    try:
+        import json
+        if lead.emails:
+            parsed = json.loads(lead.emails) if isinstance(lead.emails, str) else lead.emails
+            if isinstance(parsed, list):
+                emails.extend([e for e in parsed if e])
+            elif isinstance(parsed, str):
+                emails.append(parsed)
+    except Exception:
+        pass
+    try:
+        if hasattr(lead, "website_data") and lead.website_data and lead.website_data.emails:
+            emails.extend([e for e in lead.website_data.emails if e])
+    except Exception:
+        pass
+    # Deduplicate while preserving order
+    seen = set()
+    uniq = []
+    for e in emails:
+        if e not in seen:
+            uniq.append(e)
+            seen.add(e)
+    return uniq
+
+
+class ChatwootContactSyncAPIView(APIView):
+    """
+    Sync leads into Chatwoot and record ledger entries for tracking.
+    """
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(exclude=True)
+    def post(self, request):
+        serializer = ChatwootContactSyncSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        limit = data.get("limit") or 100
+        job_id = data.get("job_id")
+        dry_run = data.get("dry_run", True)
+        skip_synced = data.get("skip_synced", True)
+
+        client = ChatwootClient()
+        if not client.configured:
+            return Response(
+                {"error": "Chatwoot is not configured. Check CHATWOOT_* env vars.", "configured": False},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        leads_qs = GmapsLead.objects.all().select_related("job")
+        if job_id:
+            leads_qs = leads_qs.filter(job_id=job_id)
+        if skip_synced:
+            from django.db.models import Exists, OuterRef
+            leads_qs = leads_qs.annotate(
+                _has_sync=Exists(ChatwootContactSync.objects.filter(lead_id=OuterRef("id"), status="synced"))
+            ).filter(_has_sync=False)
+
+        prepared = []
+        errors = []
+        scanned = 0
+
+        for lead in leads_qs.order_by("-id"):
+            if len(prepared) >= limit:
+                break
+            scanned += 1
+            phone = lead.cleaned_phone
+            emails = _emails_from_lead(lead)
+            email = emails[0] if emails else None
+            if not phone and not email:
+                continue
+
+            # Enrich with WhatsApp identifiers if available
+            wa_attrs = {}
+            try:
+                wa = getattr(lead, "whatsapp_contact", None)
+                if wa:
+                    if getattr(wa, "chat_id", None):
+                        wa_attrs["whatsapp_chat_id"] = wa.chat_id
+                        wa_attrs["waha_whatsapp_chat_id"] = wa.chat_id
+                    if getattr(wa, "jid", None):
+                        wa_attrs["whatsapp_jid"] = wa.jid
+                        wa_attrs["waha_whatsapp_jid"] = wa.jid
+                    if getattr(wa, "lid", None):
+                        wa_attrs["whatsapp_lid"] = wa.lid
+                        wa_attrs["waha_whatsapp_lid"] = wa.lid
+            except Exception:
+                wa_attrs = {}
+
+            payload = {
+                "name": lead.title or (email or phone),
+                "phone": f"+{phone}" if phone and not phone.startswith("+") else phone,
+                "email": email,
+                "custom_attributes": {
+                    "gmaps_lead_id": lead.id,
+                    "category": lead.category,
+                    "website": lead.website,
+                    "emails": emails,
+                    "social_links": getattr(getattr(lead, "website_data", None), "social_links", None) or {},
+                    **wa_attrs,
+                },
+                "lead_id": lead.id,
+            }
+            prepared.append(payload)
+
+        summary = {
+            "dry_run": dry_run,
+            "job_id": job_id,
+            "limit": limit,
+            "scanned": scanned,
+            "prepared": len(prepared),
+            "synced": 0,
+            "failed": 0,
+            "errors": errors,
+            "preview": prepared[: min(5, len(prepared))],
+        }
+
+        if dry_run or not prepared:
+            return Response(summary)
+
+        for payload in prepared:
+            lead_id = payload["lead_id"]
+            phone = payload.get("phone")
+            email = payload.get("email")
+            try:
+                contact = client.ensure_contact_any(
+                    phone=phone,
+                    email=email,
+                    name=payload.get("name"),
+                    custom_attributes=payload.get("custom_attributes"),
+                )
+                contact_id = contact.get("id") if isinstance(contact, dict) else None
+                if not contact_id:
+                    raise ValueError(f"Chatwoot contact id missing for lead {lead_id}")
+                inbox_res = client.ensure_contact_inbox(
+                    contact_id=contact_id,
+                    inbox_id=getattr(client, "inbox_id", None),
+                    source_id=phone or email,
+                )
+                ledger, _ = ChatwootContactSync.objects.get_or_create(lead_id=lead_id)
+                ledger.chatwoot_contact_id = contact_id
+                ledger.chatwoot_inbox_id = getattr(client, "inbox_id", None)
+                ledger.source_identifier = phone or email
+                ledger.payload = payload
+                ledger.status = "synced"
+                ledger.last_error = None
+                ledger.last_synced_at = timezone.now()
+                ledger.save()
+                summary["synced"] += 1
+            except Exception as exc:  # noqa: BLE001
+                ledger, _ = ChatwootContactSync.objects.get_or_create(lead_id=lead_id)
+                ledger.status = "failed"
+                ledger.last_error = str(exc)
+                ledger.payload = payload
+                ledger.last_synced_at = timezone.now()
+                ledger.save()
+                errors.append({"lead_id": lead_id, "error": str(exc)})
+                summary["failed"] += 1
+
+        return Response(summary, status=status.HTTP_200_OK if summary["failed"] == 0 else status.HTTP_206_PARTIAL_CONTENT)

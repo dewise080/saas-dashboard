@@ -1,0 +1,62 @@
+.si-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  font-style: normal;
+}
+
+.icon-default {
+  background-color: #9ca3af;
+  border-radius: 50%;
+}
+
+.icon-gmaps {
+  background-image: url("https://cdn.simpleicons.org/googlemaps/25D366");
+}
+
+.icon-whatsapp {
+  background-image: url("https://cdn.simpleicons.org/whatsapp/25D366");
+}
+
+.icon-chatwoot {
+  background-image: url("https://cdn.simpleicons.org/chatwoot/3b82f6");
+}
+
+.icon-accounts {
+  background-image: url("https://cdn.simpleicons.org/keycloak/888888");
+}
+
+.icon-email {
+  background-image: url("https://cdn.simpleicons.org/maildotru/ff9500");
+}
+
+.icon-pages {
+  background-image: url("https://cdn.simpleicons.org/filezilla/999999");
+}
+
+.icon-settings {
+  background-image: url("https://cdn.simpleicons.org/gnubash/666666");
+}
+
+.icon-explorer {
+  background-image: url("https://cdn.simpleicons.org/postgresql/336791");
+}
+
+.icon-n8n {
+  background-image: url("https://cdn.simpleicons.org/n8n/ff6a3f");
+}
+
+.icon-telegram {
+  background-image: url("https://cdn.simpleicons.org/telegram/2aa7df");
+}
+
+.icon-pages {
+  background-image: url("https://cdn.simpleicons.org/microsoftsharepoint/38bdf8");
+}
+
+.icon-gmail {
+  background-image: url("https://cdn.simpleicons.org/gmail/ea4335");
+}

@@ -43,6 +43,14 @@ CSRF_TRUSTED_ORIGINS = ['https://app.whatsynaptic.tech', 'http://localhost:8000'
 # Allow embedding in iframes (for integration with other sites)
 X_FRAME_OPTIONS = "ALLOWALL"
 
+# WAHA WhatsApp API
+WAHA_SERVICE_FQDN = os.getenv("SERVICE_FQDN_WAHA")
+WAHA_SERVICE_URL = os.getenv("SERVICE_URL_WAHA")
+WAHA_API_KEY = os.getenv("WAHA_API_KEY") or os.getenv("API_KEY")
+WAHA_SESSION = os.getenv("WAHA_SESSION") or os.getenv("session") or "default"
+WAHA_CONTACTS_PATH = os.getenv("WAHA_CONTACTS_PATH")
+WAHA_TIMEOUT = int(os.getenv("WAHA_TIMEOUT", "15"))
+
 RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
 if RENDER_EXTERNAL_HOSTNAME:    
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
@@ -55,7 +63,9 @@ INSTALLED_APPS = [
     "django.contrib.admin",
     "accounts_plus",
     'admin_datta.apps.AdminDattaConfig',  # Re-enabled - module is installed
+    "core_dashboard",
     "ckeditor",
+    "import_export",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -146,6 +156,13 @@ EVO_DB_PASSWORD = os.getenv("EVO_DB_PASSWORD")
 EVO_DB_HOST = os.getenv("EVO_DB_HOST")
 EVO_DB_PORT = os.getenv("EVO_DB_PORT", "5432")
 
+# Chatwoot DB (read-only mirror)
+CHATWOOT_DB_NAME = os.getenv("CHATWOOT_DB_NAME")
+CHATWOOT_DB_USER = os.getenv("CHATWOOT_DB_USER")
+CHATWOOT_DB_PASSWORD = os.getenv("CHATWOOT_DB_PASSWORD")
+CHATWOOT_DB_HOST = os.getenv("CHATWOOT_DB_HOST")
+CHATWOOT_DB_PORT = os.getenv("CHATWOOT_DB_PORT", "5432")
+
 if DB_ENGINE and DB_NAME and DB_USERNAME:
     DATABASES = { 
       'default': {
@@ -183,6 +200,17 @@ if EVO_DB_NAME and EVO_DB_USER:
         "PASSWORD": EVO_DB_PASSWORD,
         "HOST": EVO_DB_HOST,
         "PORT": EVO_DB_PORT,
+    }
+
+# Chatwoot read-only DB (optional)
+if CHATWOOT_DB_NAME and CHATWOOT_DB_USER:
+    DATABASES["chatwoot"] = {
+        "ENGINE": "django.db.backends.postgresql_psycopg2",
+        "NAME": CHATWOOT_DB_NAME,
+        "USER": CHATWOOT_DB_USER,
+        "PASSWORD": CHATWOOT_DB_PASSWORD,
+        "HOST": CHATWOOT_DB_HOST,
+        "PORT": CHATWOOT_DB_PORT,
     }
 
 DATABASE_ROUTERS = ["project_root.db_routers.N8nRouter"]
@@ -414,3 +442,111 @@ CHATWOOT_ACCOUNT_ID = os.getenv("CHATWOOT_ACCOUNT_ID")
 CHATWOOT_INBOX_ID = os.getenv("CHATWOOT_INBOX_ID")
 CHATWOOT_API_TOKEN = os.getenv("CHATWOOT_API_TOKEN")
 CHATWOOT_API_PATH = os.getenv("CHATWOOT_API_PATH", "/api/v1")
+
+
+
+JAZZMIN_SETTINGS = {
+    "show_ui_builder": True,
+    "navigation_expanded": False,
+    "custom_css": "css/jazzmin-custom.css",
+    "icons": {
+        # App-level defaults
+        "gmaps_leads": "si-icon icon-gmaps",
+        "accounts_plus": "si-icon icon-accounts",
+        "emailing": "si-icon icon-gmail",
+        "pages": "si-icon icon-pages",
+        "admin": "si-icon icon-settings",
+        "explorer": "si-icon icon-explorer",
+        "n8n_mirror": "si-icon icon-n8n",
+        "auth": "si-icon icon-accounts",
+        "authtoken": "si-icon icon-accounts",
+
+        # Model-level overrides
+        "gmaps_leads.scrapejob": "si-icon icon-gmaps",
+        "gmaps_leads.gmapslead": "si-icon icon-gmaps",
+        "gmaps_leads.whatsappcontact": "si-icon icon-whatsapp",
+        "gmaps_leads.chatwootcontactsync": "si-icon icon-chatwoot",
+        "gmaps_leads.chatwootcontact": "si-icon icon-chatwoot",
+        "gmaps_leads.leadwebsite": "si-icon icon-gmaps",
+        "gmaps_leads.customizedcontact": "si-icon icon-email",
+        # n8n mirror model names (lowercase, no underscores)
+        "n8n_mirror.credentialsentity": "si-icon icon-n8n",
+        "n8n_mirror.executionentity": "si-icon icon-n8n",
+        "n8n_mirror.executiondata": "si-icon icon-n8n",
+        "n8n_mirror.executionannotations": "si-icon icon-n8n",
+        "n8n_mirror.executionmetadata": "si-icon icon-n8n",
+        "n8n_mirror.sharedworkflow": "si-icon icon-n8n",
+        "n8n_mirror.tagentity": "si-icon icon-n8n",
+        "n8n_mirror.userapikeys": "si-icon icon-n8n",
+        "n8n_mirror.userentity": "si-icon icon-n8n",
+        "n8n_mirror.webhookentity": "si-icon icon-n8n",
+        "n8n_mirror.workflowentity": "si-icon icon-n8n",
+        "n8n_mirror.project": "si-icon icon-n8n",
+        "n8n_mirror.projectrelation": "si-icon icon-n8n",
+        "n8n_mirror.sharedcredentials": "si-icon icon-n8n",
+        # pages models
+        "pages.userwhatsappinstance": "si-icon icon-whatsapp",
+        "pages.usertelegramcredential": "si-icon icon-telegram",
+        "pages.product": "si-icon icon-pages",
+        "pages.n8nexecutionsnapshot": "si-icon icon-n8n",
+        # emailing models
+        "emailing.emailtemplate": "si-icon icon-gmail",
+        "emailing.emailcampaign": "si-icon icon-gmail",
+        "emailing.emailsend": "si-icon icon-gmail",
+        "emailing.recipient": "si-icon icon-gmail",
+        "emailing.emailaddress": "si-icon icon-gmail",
+        "emailing.campaignrecipient": "si-icon icon-gmail",
+        # explorer
+        "explorer.query": "si-icon icon-explorer",
+        "explorer.databaseconnection": "si-icon icon-explorer",
+        "explorer.querylog": "si-icon icon-explorer",
+        "explorer.queryfavorite": "si-icon icon-explorer",
+        "explorer.explorervalue": "si-icon icon-explorer",
+        "explorer.tabledescription": "si-icon icon-explorer",
+        "explorer.promptlog": "si-icon icon-explorer",
+        # accounts_plus
+        "accounts_plus.openaikeypool": "si-icon icon-accounts",
+        "accounts_plus.usern8nprofile": "si-icon icon-accounts",
+        # authtoken
+        "authtoken.token": "si-icon icon-accounts",
+        "authtoken.tokenproxy": "si-icon icon-accounts",
+        "auth.user": "si-icon icon-accounts",
+        "auth.Group": "si-icon icon-accounts",
+        'site_brand': 'Whatsynaptic',
+        'site_header': 'Whatsynaptic',
+    },
+    "default_icon_parents": "si-icon icon-default",
+    "default_icon_children": "si-icon icon-default",
+}
+JAZZMIN_UI_TWEAKS = {
+    "navbar_small_text": True,
+    "footer_small_text": False,
+    "body_small_text": False,
+    "brand_small_text": False,
+    "brand_colour": False,
+    "accent": "lightblue",
+    "navbar": "navbar-dark navbar-dark",
+    "no_navbar_border": False,
+    "navbar_fixed": True,
+    "layout_boxed": False,
+    "footer_fixed": True,
+    "sidebar_fixed": False,
+    "sidebar": "sidebar-dark-lime",
+    "sidebar_nav_small_text": False,
+    "sidebar_disable_expand": False,
+    "sidebar_nav_child_indent": False,
+    "sidebar_nav_compact_style": True,
+    "sidebar_nav_legacy_style": False,
+    "sidebar_nav_flat_style": False,
+    "theme": "darkly",
+    "dark_mode_theme": "cyborg",
+    "button_classes": {
+        "primary": "btn-primary",
+        "secondary": "btn-secondary",
+        "info": "btn-info",
+        "warning": "btn-warning",
+        "danger": "btn-danger",
+        "success": "btn-success"
+    },
+    "actions_sticky_top": False
+}

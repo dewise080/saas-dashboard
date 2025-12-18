@@ -11,8 +11,24 @@ from django.db.models import Q
 from django import forms
 from django.contrib.admin.helpers import ActionForm
 from ckeditor.widgets import CKEditorWidget
-from .models import ScrapeJob, GmapsLead, WhatsAppContact, LeadWebsite, CustomizedContact
+from import_export import fields, resources
+from import_export.admin import ImportExportModelAdmin
+from import_export.widgets import ForeignKeyWidget
+from .models import (
+    ScrapeJob,
+    GmapsLead,
+    WhatsAppContact,
+    LeadWebsite,
+    CustomizedContact,
+    ChatwootContactSync,
+    ChatwootContact,
+    WhatsAppCampaign,
+    WhatsAppCampaignRecipient,
+    WhatsAppTemplatePool,
+    WhatsAppTemplate,
+)
 from .services import create_scrape_job, refresh_job_status, import_job_results, GmapsScraperService
+from .whatsapp_campaigns import prepare_campaign_recipients
 from apps.emailing.models import (
     EmailCampaign,
     EmailTemplate,
@@ -21,6 +37,9 @@ from apps.emailing.models import (
     CampaignRecipient,
 )
 from django.conf import settings
+
+from .waha_test_messages import run_test_message
+from .serializers import WahaTestMessageSerializer
 
 
 # Custom Filters
@@ -1268,105 +1287,243 @@ class CustomizedContactAdmin(admin.ModelAdmin):
     def created_at_display(self, obj):
         """Show formatted creation date."""
         return obj.created_at.strftime('%Y-%m-%d %H:%M')
-    created_at_display.short_description = 'Created'
-    created_at_display.admin_order_field = 'created_at'
-    
-    def lead_context_preview(self, obj):
-        """Show lead context that would be sent to AI."""
-        if not obj.lead:
-            return '-'
-        
-        context_parts = [
-            f"<strong>Business:</strong> {obj.lead.title}",
-            f"<strong>Category:</strong> {obj.lead.category or 'N/A'}",
-            f"<strong>Phone:</strong> {obj.lead.phone or 'N/A'}",
-            f"<strong>Website:</strong> {obj.lead.website or 'N/A'}",
+
+
+@admin.register(ChatwootContactSync)
+class ChatwootContactSyncAdmin(admin.ModelAdmin):
+    list_display = ('id', 'lead', 'chatwoot_contact_id', 'chatwoot_inbox_id', 'status', 'last_synced_at', 'updated_at')
+    search_fields = ('lead__title', 'source_identifier', 'chatwoot_contact_id')
+    list_filter = ('status', 'chatwoot_inbox_id', 'last_synced_at')
+
+
+@admin.register(ChatwootContact)
+class ChatwootContactAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'email', 'phone_number', 'account_id', 'created_at', 'updated_at')
+    search_fields = ('name', 'email', 'phone_number', 'identifier')
+    list_filter = ('account_id',)
+    readonly_fields = [f.name for f in ChatwootContact._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_readonly_fields(self, request, obj=None):
+        return self.readonly_fields
+
+
+@admin.register(WhatsAppCampaign)
+class WhatsAppCampaignAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "job", "status", "throttle_per_minute", "delay_min_ms", "delay_max_ms", "created_at")
+    list_filter = ("status", "job")
+    search_fields = ("name", "job__name")
+    readonly_fields = ("status", "created_at", "updated_at", "last_error")
+    actions = ("prepare_recipients", "prepare_recipients_overwrite")
+    change_form_template = "admin/gmaps_leads/whatsappcampaign/change_form.html"
+
+    class RecipientInline(admin.TabularInline):
+        model = WhatsAppCampaignRecipient
+        extra = 0
+        fields = ("lead", "status", "template", "media_url", "message_id", "sent_at", "attempts")
+        readonly_fields = fields
+        show_change_link = True
+
+    inlines = [RecipientInline]
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "<int:object_id>/test-message/",
+                self.admin_site.admin_view(self.test_message_view),
+                name="gmaps_leads_whatsappcampaign_test_message",
+            ),
         ]
-        
-        # Add website data if available
+        return custom + urls
+
+    def test_message_view(self, request, object_id, *args, **kwargs):
+        campaign = get_object_or_404(WhatsAppCampaign, pk=object_id)
+        from .models import WhatsAppTemplatePool, WhatsAppTemplate
+
+        if request.method == "GET":
+            eligible_pools = WhatsAppTemplatePool.objects.filter(is_active=True).filter(
+                Q(job_id=campaign.job_id) | Q(job__isnull=True)
+            )
+            templates = WhatsAppTemplate.objects.filter(is_active=True, pool__in=eligible_pools).select_related("pool").order_by("-id")[:200]
+            context = {
+                **self.admin_site.each_context(request),
+                "opts": self.model._meta,
+                "original": campaign,
+                "title": "Send test WhatsApp message",
+                "pools": eligible_pools.order_by("-id")[:200],
+                "templates": templates,
+                "campaign": campaign,
+            }
+            return render(request, "admin/gmaps_leads/whatsappcampaign/test_message.html", context)
+
+        # POST: handle preview or send
+        source = request.POST.get("source") or "campaign"
+        payload = {"campaign_id": campaign.id}
+
+        def _set_if_present(key: str, value):
+            if value is None:
+                return
+            if isinstance(value, str):
+                cleaned = value.strip()
+                if cleaned == "":
+                    return
+                payload[key] = cleaned
+                return
+            payload[key] = value
+
+        _set_if_present("phone", request.POST.get("phone"))
+        _set_if_present("jid", request.POST.get("jid"))
+        _set_if_present("chat_id", request.POST.get("chat_id"))
+
+        lead_id_raw = (request.POST.get("lead_id") or "").strip()
+        if lead_id_raw:
+            try:
+                payload["lead_id"] = int(lead_id_raw)
+            except ValueError:
+                self.message_user(request, "lead_id must be an integer.", level=messages.ERROR)
+                return redirect("admin:gmaps_leads_whatsappcampaign_test_message", object_id)
+
+        _set_if_present("business_name", request.POST.get("business_name"))
+        _set_if_present("category", request.POST.get("category"))
+        _set_if_present("website", request.POST.get("website"))
+        _set_if_present("reply_to", request.POST.get("reply_to"))
+
+        if request.POST.get("link_preview") in ("on", "true", "1"):
+            payload["link_preview"] = True
+        if request.POST.get("link_preview_high_quality") in ("on", "true", "1"):
+            payload["link_preview_high_quality"] = True
+
+        if source == "text":
+            payload["text"] = request.POST.get("text") or ""
+        elif source == "template":
+            template_id = request.POST.get("template_id")
+            if template_id:
+                payload["template_id"] = int(template_id)
+        elif source == "pool":
+            pool_id = request.POST.get("pool_id")
+            if pool_id:
+                payload["pool_id"] = int(pool_id)
+
+        if request.POST.get("submit_action") == "send":
+            payload["dry_run"] = False
+        else:
+            payload["dry_run"] = True
+
+        serializer = WahaTestMessageSerializer(data=payload)
         try:
-            if hasattr(obj.lead, 'website_data') and obj.lead.website_data:
-                wd = obj.lead.website_data
-                if wd.emails:
-                    context_parts.append(f"<strong>Emails:</strong> {', '.join(wd.emails)}")
-                if wd.ai_services:
-                    context_parts.append(f"<strong>Services:</strong> {', '.join(wd.ai_services[:5])}")
-        except:
-            pass
-        
-        return format_html('<br>'.join(context_parts))
-    lead_context_preview.short_description = 'Lead Context'
-    
-    # Actions
-    @admin.action(description='✅ Mark as Ready to Send')
-    def mark_as_ready(self, request, queryset):
-        from .signals import email_template_ready
-        updated = 0
-        for template in queryset:
-            if template.status != 'ready':
-                template.status = 'ready'
-                template.save()
-                email_template_ready.send(sender=self.__class__, instance=template)
-                updated += 1
-        messages.success(request, f'Marked {updated} templates as ready (signals emitted)')
-    
-    @admin.action(description='👍 Mark as Approved')
-    def mark_as_approved(self, request, queryset):
-        from .signals import email_template_approved
-        updated = 0
-        for template in queryset:
-            if template.status != 'approved':
-                template.status = 'approved'
-                template.save()
-                email_template_approved.send(sender=self.__class__, instance=template)
-                updated += 1
-        messages.success(request, f'Approved {updated} templates (signals emitted)')
-    
-    @admin.action(description='📝 Mark as Draft')
-    def mark_as_draft(self, request, queryset):
-        updated = queryset.update(status='draft')
-        messages.success(request, f'Marked {updated} templates as draft')
-    
-    @admin.action(description='🚫 Mark as Rejected')
-    def mark_as_rejected(self, request, queryset):
-        updated = queryset.update(status='rejected')
-        messages.success(request, f'Rejected {updated} templates')
-    
-    @admin.action(description='📋 Export for Sending (CSV)')
-    def export_for_sending(self, request, queryset):
-        import csv
-        from django.http import HttpResponse
-        
-        # Only export ready/approved templates with target emails
-        templates = queryset.filter(status__in=['ready', 'approved'])
-        
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = 'attachment; filename="email_templates_export.csv"'
-        
-        writer = csv.writer(response)
-        writer.writerow([
-            'Lead ID', 'Business Name', 'Target Email', 'Subject', 
-            'Body HTML', 'Body Plain', 'Status', 'Template Type'
-        ])
-        
-        exported = 0
-        for template in templates:
-            target = template.target_email
-            if target:
-                writer.writerow([
-                    template.lead_id,
-                    template.lead.title,
-                    target,
-                    template.subject,
-                    template.body_html,
-                    template.body_plain or '',
-                    template.status,
-                    template.template_type,
-                ])
-                exported += 1
-        
-        if exported == 0:
-            messages.warning(request, 'No templates with target emails to export')
-            return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/admin/'))
-        
-        return response
+            serializer.is_valid(raise_exception=True)
+            result = run_test_message(serializer.validated_data)
+        except Exception as exc:  # noqa: BLE001
+            self.message_user(request, f"Test message failed: {exc}", level=messages.ERROR)
+            return redirect("admin:gmaps_leads_whatsappcampaign_test_message", object_id)
+
+        if result.get("dry_run"):
+            rendered = result.get("rendered_text") or ""
+            self.message_user(
+                request,
+                format_html(
+                    "Preview for <code>{}</code>:<br><pre style='white-space:pre-wrap'>{}</pre>",
+                    result.get("chat_id"),
+                    rendered,
+                ),
+                level=messages.INFO,
+            )
+        else:
+            waha = result.get("waha") or {}
+            if waha.get("success"):
+                msg_id = (waha.get("response") or {}).get("id") or "OK"
+                self.message_user(request, f"Sent test message successfully (id: {msg_id}).", level=messages.SUCCESS)
+            else:
+                self.message_user(request, f"WAHA send failed: {waha}", level=messages.ERROR)
+
+        return redirect("admin:gmaps_leads_whatsappcampaign_test_message", object_id)
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        # Auto-generate recipients on create (keeps campaigns job-scoped and previewable).
+        if not change:
+            prepare_campaign_recipients(obj)
+
+    @admin.action(description="Prepare recipients (no send)")
+    def prepare_recipients(self, request, queryset):
+        total_errors = 0
+        for campaign in queryset:
+            res = prepare_campaign_recipients(campaign, overwrite=False)
+            total_errors += len(res.get("errors") or [])
+        if total_errors:
+            self.message_user(request, f"Prepared recipients with {total_errors} errors. Check campaign recipients for details.", level=messages.WARNING)
+        else:
+            self.message_user(request, "Prepared recipients successfully.")
+
+    @admin.action(description="Prepare recipients (overwrite existing)")
+    def prepare_recipients_overwrite(self, request, queryset):
+        total_errors = 0
+        for campaign in queryset:
+            res = prepare_campaign_recipients(campaign, overwrite=True)
+            total_errors += len(res.get("errors") or [])
+        if total_errors:
+            self.message_user(request, f"Prepared recipients (overwrite) with {total_errors} errors.", level=messages.WARNING)
+        else:
+            self.message_user(request, "Prepared recipients (overwrite) successfully.")
+
+
+@admin.register(WhatsAppCampaignRecipient)
+class WhatsAppCampaignRecipientAdmin(admin.ModelAdmin):
+    list_display = ("id", "campaign", "lead", "status", "template", "media_url", "message_id", "sent_at", "attempts")
+    list_filter = ("status", "campaign")
+    search_fields = ("campaign__name", "lead__title", "lead__phone")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(WhatsAppTemplatePool)
+class WhatsAppTemplatePoolAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "job", "is_active", "created_at")
+    list_filter = ("is_active", "job")
+    search_fields = ("name", "job__name")
+    readonly_fields = ("created_at", "updated_at")
+
+
+class WhatsAppTemplateResource(resources.ModelResource):
+    pool_id = fields.Field(
+        column_name="pool_id",
+        attribute="pool",
+        widget=ForeignKeyWidget(WhatsAppTemplatePool, "id"),
+    )
+    pool_name = fields.Field(column_name="pool_name")
+
+    class Meta:
+        model = WhatsAppTemplate
+        import_id_fields = ("id",)
+        skip_unchanged = True
+        report_skipped = True
+        fields = ("id", "pool_id", "pool_name", "text", "media_url", "weight", "is_active")
+        export_order = ("id", "pool_id", "pool_name", "text", "media_url", "weight", "is_active")
+
+    def dehydrate_pool_name(self, obj):
+        return obj.pool.name if getattr(obj, "pool", None) else ""
+
+    def before_import_row(self, row, **kwargs):
+        # Allow importing by pool_name if pool_id is not provided.
+        pool_id = row.get("pool_id")
+        pool_name = row.get("pool_name")
+        pool_id = pool_id.strip() if isinstance(pool_id, str) else pool_id
+        pool_name = pool_name.strip() if isinstance(pool_name, str) else pool_name
+        if (not pool_id) and pool_name:
+            pool = WhatsAppTemplatePool.objects.filter(name=pool_name).order_by("-id").first()
+            if pool:
+                row["pool_id"] = str(pool.id)
+
+
+@admin.register(WhatsAppTemplate)
+class WhatsAppTemplateAdmin(ImportExportModelAdmin):
+    resource_class = WhatsAppTemplateResource
+    list_display = ("id", "pool", "weight", "is_active", "created_at")
+    list_filter = ("is_active", "pool")
+    search_fields = ("pool__name", "text")
+    readonly_fields = ("created_at", "updated_at")

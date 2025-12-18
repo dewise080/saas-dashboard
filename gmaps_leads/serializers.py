@@ -1,6 +1,26 @@
 from rest_framework import serializers
-from .models import ScrapeJob, GmapsLead, WhatsAppContact, LeadWebsite, CustomizedContact
+from .models import (
+    ScrapeJob,
+    GmapsLead,
+    WhatsAppContact,
+    LeadWebsite,
+    CustomizedContact,
+    AIMemory,
+    WhatsAppCampaign,
+    WhatsAppCampaignRecipient,
+    WhatsAppTemplatePool,
+    WhatsAppTemplate,
+)
 from apps.emailing.models import EmailCampaign, CampaignRecipient
+
+
+# Serializer for the simple AI memory model
+
+class AIMemorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AIMemory
+        fields = ["id", "memory_type", "content", "created_at"]
+        read_only_fields = ["id", "created_at"]
 
 
 class ScrapeJobCreateSerializer(serializers.Serializer):
@@ -363,3 +383,194 @@ class AICampaignRecipientListSerializer(serializers.ModelSerializer):
         ]
 
     # Status update serializer removed as status field is no longer present in model
+
+
+class WahaContactSyncSerializer(serializers.Serializer):
+    """Request payload for syncing WhatsApp leads into WAHA."""
+
+    job_id = serializers.IntegerField(required=False, help_text="Limit sync to a specific scrape job.")
+    limit = serializers.IntegerField(
+        required=False, min_value=1, max_value=500, default=100, help_text="Max number of leads to push."
+    )
+    dry_run = serializers.BooleanField(default=True, help_text="When true, do not call WAHA; just preview payload.")
+    force_refresh = serializers.BooleanField(
+        default=False, help_text="Rebuild WhatsAppContact records even if they already exist."
+    )
+
+
+class WahaSendMessageSerializer(serializers.Serializer):
+    """Request payload for sending a WhatsApp message via WAHA."""
+
+    chat_id = serializers.CharField(
+        required=False,
+        help_text="WhatsApp chatId (e.g., 905XXXXXXXX@c.us). Optional if phone or lead_id is provided.",
+    )
+    phone = serializers.CharField(
+        required=False,
+        help_text="Digits-only phone number; formatted to chatId automatically if chat_id not provided.",
+    )
+    lead_id = serializers.IntegerField(
+        required=False,
+        help_text="Resolve the chatId from this lead's WhatsAppContact (creates one if possible).",
+    )
+    text = serializers.CharField(help_text="Message text to send.")
+    quoted_message_id = serializers.CharField(
+        required=False, allow_blank=True, help_text="Optional WAHA message id to quote/reply to."
+    )
+
+    def validate(self, attrs):
+        if not (attrs.get("chat_id") or attrs.get("phone") or attrs.get("lead_id")):
+            raise serializers.ValidationError("Provide chat_id, phone, or lead_id.")
+        return attrs
+
+
+class WahaTestMessageSerializer(serializers.Serializer):
+    """
+    Preview or send a single WhatsApp message using a template/pool/campaign context.
+    Designed for testing message shape (text/media) without running a whole campaign.
+    """
+
+    # Recipient
+    chat_id = serializers.CharField(required=False, allow_blank=True, allow_null=True, help_text="e.g., 905XXXXXXXX@c.us")
+    jid = serializers.CharField(required=False, allow_blank=True, allow_null=True, help_text="e.g., 905XXXXXXXX@s.whatsapp.net (will be normalized)")
+    phone = serializers.CharField(required=False, allow_blank=True, allow_null=True, help_text="Digits-only or +E164; converted to chatId")
+
+    # Content source
+    text = serializers.CharField(required=False, allow_blank=True, allow_null=True, help_text="Raw text (optional if template_id/pool_id/campaign_id provided)")
+    template_id = serializers.IntegerField(required=False, help_text="Use a specific WhatsAppTemplate")
+    pool_id = serializers.IntegerField(required=False, help_text="Pick a random template from this pool")
+    campaign_id = serializers.IntegerField(required=False, help_text="Use this campaign's pool/fallback settings")
+
+    # Render context
+    lead_id = serializers.IntegerField(required=False, allow_null=True, help_text="Use lead fields for {{business_name}}, etc.")
+    business_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    category = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    website = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    # Options
+    dry_run = serializers.BooleanField(default=True, help_text="When true, do not send; only preview payload")
+    link_preview = serializers.BooleanField(required=False, allow_null=True)
+    link_preview_high_quality = serializers.BooleanField(required=False, allow_null=True)
+    reply_to = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    def validate(self, attrs):
+        if not (attrs.get("chat_id") or attrs.get("jid") or attrs.get("phone")):
+            raise serializers.ValidationError("Provide chat_id, jid, or phone.")
+        if not (attrs.get("text") is not None or attrs.get("template_id") or attrs.get("pool_id") or attrs.get("campaign_id")):
+            raise serializers.ValidationError("Provide text, template_id, pool_id, or campaign_id.")
+        return attrs
+
+
+class WhatsAppCampaignSerializer(serializers.ModelSerializer):
+    job_id = serializers.IntegerField(write_only=True)
+    template_pool_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    template_pool = serializers.IntegerField(source="template_pool.id", read_only=True)
+
+    class Meta:
+        model = WhatsAppCampaign
+        fields = [
+            "id",
+            "name",
+            "job_id",
+            "template_pool_id",
+            "template_pool",
+            "text_template",
+            "media_url",
+            "throttle_per_minute",
+            "delay_min_ms",
+            "delay_max_ms",
+            "status",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["status", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        pool_id = attrs.get("template_pool_id")
+        text_template = (attrs.get("text_template") or "").strip()
+        if not pool_id and not text_template:
+            raise serializers.ValidationError("Provide template_pool_id or a non-empty text_template.")
+        if pool_id:
+            pool = WhatsAppTemplatePool.objects.get(pk=pool_id)
+            job_id = attrs.get("job_id")
+            if pool.job_id and job_id and pool.job_id != job_id:
+                raise serializers.ValidationError("Template pool job must match campaign job.")
+        return attrs
+
+    def create(self, validated_data):
+        job_id = validated_data.pop("job_id")
+        pool_id = validated_data.pop("template_pool_id", None)
+        job = ScrapeJob.objects.get(pk=job_id)
+        pool = None
+        if pool_id:
+            pool = WhatsAppTemplatePool.objects.get(pk=pool_id)
+        campaign = WhatsAppCampaign(job=job, template_pool=pool, **validated_data)
+        campaign.full_clean()
+        campaign.save()
+        return campaign
+
+    def update(self, instance, validated_data):
+        pool_id = validated_data.pop("template_pool_id", None)
+        if pool_id is not None:
+            instance.template_pool = WhatsAppTemplatePool.objects.get(pk=pool_id)
+        return super().update(instance, validated_data)
+
+
+class WhatsAppCampaignRecipientSerializer(serializers.ModelSerializer):
+    lead_id = serializers.IntegerField(source="lead.id", read_only=True)
+    template_id = serializers.IntegerField(source="template.id", read_only=True)
+
+    class Meta:
+        model = WhatsAppCampaignRecipient
+        fields = [
+            "id",
+            "lead_id",
+            "rendered_text",
+            "template_id",
+            "media_url",
+            "status",
+            "message_id",
+            "error",
+            "sent_at",
+        ]
+        read_only_fields = fields
+
+
+class WhatsAppTemplatePoolSerializer(serializers.ModelSerializer):
+    job_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+
+    class Meta:
+        model = WhatsAppTemplatePool
+        fields = ["id", "name", "job", "job_id", "is_active", "created_at", "updated_at"]
+        read_only_fields = ["created_at", "updated_at", "job"]
+
+    def create(self, validated_data):
+        job_id = validated_data.pop("job_id", None)
+        job = None
+        if job_id:
+            job = ScrapeJob.objects.get(pk=job_id)
+        return WhatsAppTemplatePool.objects.create(job=job, **validated_data)
+
+
+class WhatsAppTemplateSerializer(serializers.ModelSerializer):
+    pool_id = serializers.IntegerField(write_only=True)
+    pool = WhatsAppTemplatePoolSerializer(read_only=True)
+
+    class Meta:
+        model = WhatsAppTemplate
+        fields = ["id", "pool", "pool_id", "text", "media_url", "weight", "is_active", "created_at", "updated_at"]
+        read_only_fields = ["created_at", "updated_at", "pool"]
+
+    def create(self, validated_data):
+        pool_id = validated_data.pop("pool_id")
+        pool = WhatsAppTemplatePool.objects.get(pk=pool_id)
+        return WhatsAppTemplate.objects.create(pool=pool, **validated_data)
+
+
+class ChatwootContactSyncSerializer(serializers.Serializer):
+    """Request payload for syncing leads into Chatwoot."""
+
+    job_id = serializers.IntegerField(required=False, help_text="Limit sync to a specific scrape job.")
+    limit = serializers.IntegerField(required=False, min_value=1, max_value=500, default=100)
+    dry_run = serializers.BooleanField(default=True)
+    skip_synced = serializers.BooleanField(default=True, help_text="Skip leads already marked as synced in the ledger.")

@@ -1,8 +1,28 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from django.core.exceptions import ValidationError
 
 User = get_user_model()
+
+
+# Simple AI Assistant Memory model
+class AIMemory(models.Model):
+    MEMORY_TYPE_CHOICES = [
+        ("note", "Note"),
+        ("progress", "Progress Status"),
+    ]
+    memory_type = models.CharField(max_length=20, choices=MEMORY_TYPE_CHOICES)
+    content = models.TextField(help_text="Details of the memory or progress status (e.g., campaign id, done/left counts, notes, etc.)")
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "AI Memory"
+        verbose_name_plural = "AI Memories"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.memory_type}: {self.content[:40]}"
 
 
 class ScrapeJob(models.Model):
@@ -529,10 +549,221 @@ class CustomizedContact(models.Model):
             self.body_plain = self.html_to_whatsapp(self.body_html)
         super().save(*args, **kwargs)
 
+
+class ChatwootContactSync(models.Model):
+    """
+    Ledger for syncing leads into Chatwoot.
+    Tracks the Chatwoot contact id and sync status for each lead.
+    """
+
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("synced", "Synced"),
+        ("failed", "Failed"),
+    ]
+
+    lead = models.OneToOneField(GmapsLead, on_delete=models.CASCADE, related_name="chatwoot_sync")
+    chatwoot_contact_id = models.IntegerField(blank=True, null=True)
+    chatwoot_inbox_id = models.IntegerField(blank=True, null=True)
+    source_identifier = models.CharField(max_length=255, blank=True, null=True, help_text="Phone or email used to create the contact")
+    payload = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    last_error = models.TextField(blank=True, null=True)
+    last_synced_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
     class Meta:
-        verbose_name = "Customized Contact"
-        verbose_name_plural = "Customized Contacts"
-        ordering = ['-id']
+        verbose_name = "Chatwoot Contact Sync"
+        verbose_name_plural = "Chatwoot Contact Syncs"
+        ordering = ["-updated_at"]
 
     def __str__(self):
-        return f"{self.lead.title} - {self.subject[:50]}"
+        return f"Lead {self.lead_id} → Chatwoot {self.chatwoot_contact_id or '-'}"
+
+
+class ChatwootReadOnlyManager(models.Manager):
+    """Force all queries to the 'chatwoot' DB and block writes."""
+
+    def get_queryset(self):
+        from django.conf import settings
+
+        if "chatwoot" not in settings.DATABASES:
+            raise RuntimeError("Chatwoot DB not configured. Set CHATWOOT_DB_* env vars.")
+        return super().get_queryset().using("chatwoot")
+
+    def _deny_write(self, *args, **kwargs):
+        raise PermissionError("Chatwoot contacts are read-only (managed=False).")
+
+    create = _deny_write
+    update_or_create = _deny_write
+    get_or_create = _deny_write
+    bulk_create = _deny_write
+
+
+class ChatwootContact(models.Model):
+    """
+    Read-only mirror of Chatwoot's contacts table (public.contacts).
+    Use .objects (read-only) for querying; writes are blocked.
+    """
+
+    objects = ChatwootReadOnlyManager()
+
+    id = models.IntegerField(primary_key=True)
+    name = models.CharField(max_length=255, blank=True, null=True)
+    email = models.CharField(max_length=255, blank=True, null=True)
+    phone_number = models.CharField(max_length=50, blank=True, null=True)
+    account_id = models.IntegerField(blank=True, null=True)
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+    additional_attributes = models.JSONField(default=dict, blank=True, null=True)
+    identifier = models.CharField(max_length=255, blank=True, null=True)
+    custom_attributes = models.JSONField(default=dict, blank=True, null=True)
+    last_activity_at = models.DateTimeField(blank=True, null=True)
+    contact_type = models.IntegerField(blank=True, null=True)
+    middle_name = models.CharField(max_length=255, blank=True, null=True)
+    last_name = models.CharField(max_length=255, blank=True, null=True)
+    location = models.CharField(max_length=255, blank=True, null=True)
+    country_code = models.CharField(max_length=50, blank=True, null=True)
+    blocked = models.BooleanField(default=False)
+    company_id = models.BigIntegerField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = "contacts"
+        verbose_name = "Chatwoot Contact (RO)"
+        verbose_name_plural = "Chatwoot Contacts (RO)"
+        ordering = ["-created_at"]
+
+    def save(self, *args, **kwargs):
+        raise PermissionError("Chatwoot contacts are read-only (managed=False).")
+
+    def delete(self, *args, **kwargs):
+        raise PermissionError("Chatwoot contacts are read-only (managed=False).")
+
+    def __str__(self):
+        label = self.name or self.email or self.phone_number or f"Contact {self.id}"
+        return f"{label} (Chatwoot #{self.id})"
+
+
+class WhatsAppCampaign(models.Model):
+    """
+    Lightweight WhatsApp campaign scoped to a scrape job.
+    """
+
+    STATUS_CHOICES = [
+        ("draft", "Draft"),
+        ("running", "Running"),
+        ("done", "Done"),
+        ("failed", "Failed"),
+    ]
+
+    job = models.ForeignKey(ScrapeJob, on_delete=models.CASCADE, related_name="whatsapp_campaigns")
+    name = models.CharField(max_length=255)
+    text_template = models.TextField(
+        blank=True,
+        default="",
+        help_text="Fallback template if pool is empty. Supports {{business_name}}, {{category}}, {{website}}.",
+    )
+    media_url = models.URLField(blank=True, null=True)
+    template_pool = models.ForeignKey("WhatsAppTemplatePool", on_delete=models.SET_NULL, null=True, blank=True, related_name="campaigns")
+    throttle_per_minute = models.IntegerField(default=20, help_text="Max messages per minute")
+    delay_min_ms = models.IntegerField(default=10_000, help_text="Minimum delay between sends (ms)")
+    delay_max_ms = models.IntegerField(default=15_000, help_text="Maximum delay between sends (ms)")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="draft")
+    last_error = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="whatsapp_campaigns")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "WhatsApp Campaign"
+        verbose_name_plural = "WhatsApp Campaigns"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.status})"
+
+    def clean(self):
+        super().clean()
+        if self.template_pool_id and self.template_pool and self.template_pool.job_id and self.template_pool.job_id != self.job_id:
+            raise ValidationError({"template_pool": "Template pool job must match campaign job."})
+        if not self.template_pool_id and not (self.text_template or "").strip():
+            raise ValidationError({"text_template": "Provide a fallback text_template or select a template_pool."})
+
+
+class WhatsAppCampaignRecipient(models.Model):
+    """
+    Recipient row for WhatsApp campaign sends.
+    """
+
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("sent", "Sent"),
+        ("failed", "Failed"),
+    ]
+
+    campaign = models.ForeignKey(WhatsAppCampaign, on_delete=models.CASCADE, related_name="recipients")
+    lead = models.ForeignKey(GmapsLead, on_delete=models.CASCADE, related_name="whatsapp_campaign_recipients")
+    whatsapp_contact = models.ForeignKey(
+        WhatsAppContact, on_delete=models.SET_NULL, null=True, blank=True, related_name="campaign_recipients"
+    )
+    template = models.ForeignKey("WhatsAppTemplate", on_delete=models.SET_NULL, null=True, blank=True, related_name="campaign_recipients")
+    media_url = models.URLField(blank=True, null=True)
+    rendered_text = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    message_id = models.CharField(max_length=255, blank=True, null=True)
+    error = models.TextField(blank=True, null=True)
+    attempts = models.IntegerField(default=0)
+    sent_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "WhatsApp Campaign Recipient"
+        verbose_name_plural = "WhatsApp Campaign Recipients"
+        indexes = [
+            models.Index(fields=["campaign", "status"]),
+            models.Index(fields=["lead"]),
+        ]
+
+    def __str__(self):
+        return f"{self.campaign_id} -> lead {self.lead_id} ({self.status})"
+
+
+class WhatsAppTemplatePool(models.Model):
+    """Pool of WhatsApp templates for randomized assignment."""
+
+    name = models.CharField(max_length=255)
+    job = models.ForeignKey(ScrapeJob, on_delete=models.CASCADE, related_name="whatsapp_template_pools", null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "WhatsApp Template Pool"
+        verbose_name_plural = "WhatsApp Template Pools"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.name
+
+
+class WhatsAppTemplate(models.Model):
+    """Individual WhatsApp template belonging to a pool."""
+
+    pool = models.ForeignKey(WhatsAppTemplatePool, on_delete=models.CASCADE, related_name="templates")
+    text = models.TextField(help_text="Template text. Supports {{business_name}}, {{category}}, {{website}}.")
+    media_url = models.URLField(blank=True, null=True)
+    weight = models.IntegerField(default=1, help_text="Weight for random selection")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "WhatsApp Template"
+        verbose_name_plural = "WhatsApp Templates"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Template {self.id} ({self.pool.name})"

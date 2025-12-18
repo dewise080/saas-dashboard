@@ -1,0 +1,4 @@
+"""
+Lightweight admin dashboard helpers.
+"""
+

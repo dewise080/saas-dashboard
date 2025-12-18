@@ -1,4 +1,4 @@
-openapi: 3.0.3
+openapi: 3.1.0
 info:
   title: GMaps Leads AI Email API
   version: 1.0.0
@@ -13,28 +13,22 @@ info:
     - Submit AI-generated email\n- `PATCH /api/email-templates/{id}/status/` - Update
     template status\n    "
 paths:
-  /gmaps-leads/api/email-templates/:
+  /api/gmaps-leads/ai/campaigns/:
     get:
-      operationId: listEmailTemplates
-      description: Returns all email templates for the current user.
-      summary: List all email templates
+      operationId: aiListCampaigns
+      description: Returns campaigns in ready/running status (use status query param
+        to override).
+      summary: 'AI: List ongoing campaigns'
       parameters:
-      - in: query
-        name: lead_id
-        schema:
-          type: integer
-        description: Filter by lead ID
       - in: query
         name: status
         schema:
           type: string
-        description: Filter by status (draft, ready, approved, sent)
+        description: 'Optional status filter (comma-separated). Default: ready,running'
       tags:
-      - Email Templates
+      - AI Campaigns
       security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
+      - {}
       responses:
         '200':
           content:
@@ -42,515 +36,34 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/EmailTemplateList'
+                  $ref: '#/components/schemas/AICampaign'
           description: ''
-  /gmaps-leads/api/email-templates/{template_id}/:
+  /api/gmaps-leads/ai/campaigns/{campaign_id}/recipients/:
     get:
-      operationId: getEmailTemplate
-      description: Get email template.
-      summary: Get email template details
+      operationId: aiListCampaignRecipients
+      description: Returns recipients for a campaign. Filter by status and limit for
+        batching.
+      summary: 'AI: List campaign recipients'
       parameters:
       - in: path
-        name: template_id
+        name: campaign_id
         schema:
           type: integer
         required: true
-      tags:
-      - Email Templates
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmailTemplate'
-          description: ''
-    put:
-      operationId: updateEmailTemplate
-      description: Update email template.
-      summary: Update email template
-      parameters:
-      - in: path
-        name: template_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - Email Templates
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EmailTemplateCreate'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/EmailTemplateCreate'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/EmailTemplateCreate'
-        required: true
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmailTemplate'
-          description: ''
-    delete:
-      operationId: deleteEmailTemplate
-      description: Delete email template.
-      summary: Delete email template
-      parameters:
-      - in: path
-        name: template_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - Email Templates
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
-      responses:
-        '204':
-          description: No response body
-  /gmaps-leads/api/email-templates/{template_id}/status/:
-    patch:
-      operationId: updateEmailTemplateStatus
-      description: Updates an email template status (draft, ready, approved, rejected)
-        and emits signals for ready/approved states.
-      summary: Update email template status
-      parameters:
-      - in: path
-        name: template_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - Email Templates
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PatchedEmailTemplateStatusUpdate'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/PatchedEmailTemplateStatusUpdate'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/PatchedEmailTemplateStatusUpdate'
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmailTemplate'
-          description: ''
-  /gmaps-leads/api/jobs/:
-    get:
-      operationId: jobs_list
-      description: API ViewSet for ScrapeJob.
-      tags:
-      - jobs
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ScrapeJob'
-          description: ''
-    post:
-      operationId: jobs_create
-      description: Create a new scrape job.
-      tags:
-      - jobs
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ScrapeJob'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/ScrapeJob'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/ScrapeJob'
-        required: true
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ScrapeJob'
-          description: ''
-  /gmaps-leads/api/jobs/{id}/:
-    get:
-      operationId: jobs_retrieve
-      description: API ViewSet for ScrapeJob.
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        description: A unique integer value identifying this Scrape Job.
-        required: true
-      tags:
-      - jobs
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ScrapeJob'
-          description: ''
-    delete:
-      operationId: jobs_destroy
-      description: API ViewSet for ScrapeJob.
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        description: A unique integer value identifying this Scrape Job.
-        required: true
-      tags:
-      - jobs
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
-      responses:
-        '204':
-          description: No response body
-  /gmaps-leads/api/jobs/{id}/leads/:
-    get:
-      operationId: jobs_leads_retrieve
-      description: Get leads for this job.
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        description: A unique integer value identifying this Scrape Job.
-        required: true
-      tags:
-      - jobs
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ScrapeJob'
-          description: ''
-  /gmaps-leads/api/leads/:
-    get:
-      operationId: leads_list
-      description: API ViewSet for GmapsLead (read-only).
-      tags:
-      - leads
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/GmapsLeadList'
-          description: ''
-  /gmaps-leads/api/leads/{lead_id}/context/:
-    get:
-      operationId: getLeadContext
-      description: Returns key business info, scraped website data, WhatsApp contacts,
-        and reviews for the specified lead.
-      summary: Get lead context for AI email generation
-      parameters:
-      - in: path
-        name: lead_id
-        schema:
-          type: integer
-        description: The ID of the lead to fetch context for
-        required: true
-      tags:
-      - AI Email Generation
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LeadContext'
-          description: ''
-        '404':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /gmaps-leads/api/leads/{lead_id}/email-template/:
-    get:
-      operationId: getLeadEmailTemplates
-      description: Returns all email templates created for this lead.
-      summary: List email templates for a lead
-      parameters:
-      - in: path
-        name: lead_id
-        schema:
-          type: integer
-        description: The ID of the lead
-        required: true
-      tags:
-      - AI Email Generation
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/EmailTemplateList'
-          description: ''
-    post:
-      operationId: createLeadEmailTemplate
-      description: Creates a new email template for the specified lead. Intended for
-        AI agents to submit generated content; set mark_ready=true to flag for human
-        review.
-      summary: Create email template for a lead (AI endpoint)
-      parameters:
-      - in: path
-        name: lead_id
-        schema:
-          type: integer
-        description: The ID of the lead to create template for
-        required: true
-      tags:
-      - AI Email Generation
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EmailTemplateCreate'
-            examples:
-              AIGeneratedEmail:
-                value:
-                  subject: Partnership opportunity for {{business_name}}
-                  body_html: <h1>Hello {{recipient_name}},</h1><p>I noticed your business...</p>
-                  body_plain: |-
-                    Hello {{recipient_name}},
-
-                    I noticed your business...
-                  template_type: outreach
-                  mark_ready: true
-                  is_personalized: true
-                  ai_model: gpt-4
-                  ai_generation_time: 2.5
-                summary: AI Generated Email
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/EmailTemplateCreate'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/EmailTemplateCreate'
-        required: true
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmailTemplate'
-          description: ''
-        '400':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /gmaps-leads/api/leads/{lead_id}/email-templates/:
-    get:
-      operationId: getLeadEmailTemplates_2
-      description: Returns all email templates created for this lead.
-      summary: List email templates for a lead
-      parameters:
-      - in: path
-        name: lead_id
-        schema:
-          type: integer
-        description: The ID of the lead
-        required: true
-      tags:
-      - AI Email Generation
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/EmailTemplateList'
-          description: ''
-    post:
-      operationId: createLeadEmailTemplate_2
-      description: Creates a new email template for the specified lead. Intended for
-        AI agents to submit generated content; set mark_ready=true to flag for human
-        review.
-      summary: Create email template for a lead (AI endpoint)
-      parameters:
-      - in: path
-        name: lead_id
-        schema:
-          type: integer
-        description: The ID of the lead to create template for
-        required: true
-      tags:
-      - AI Email Generation
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EmailTemplateCreate'
-            examples:
-              AIGeneratedEmail:
-                value:
-                  subject: Partnership opportunity for {{business_name}}
-                  body_html: <h1>Hello {{recipient_name}},</h1><p>I noticed your business...</p>
-                  body_plain: |-
-                    Hello {{recipient_name}},
-
-                    I noticed your business...
-                  template_type: outreach
-                  mark_ready: true
-                  is_personalized: true
-                  ai_model: gpt-4
-                  ai_generation_time: 2.5
-                summary: AI Generated Email
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/EmailTemplateCreate'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/EmailTemplateCreate'
-        required: true
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmailTemplate'
-          description: ''
-        '400':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /gmaps-leads/api/leads/{id}/:
-    get:
-      operationId: leads_retrieve
-      description: API ViewSet for GmapsLead (read-only).
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        description: A unique integer value identifying this Google Maps Lead.
-        required: true
-      tags:
-      - leads
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GmapsLead'
-          description: ''
-  /gmaps-leads/api/leads/with-emails/:
-    get:
-      operationId: listLeadsWithEmails
-      description: "\n        Returns leads that have email addresses available (from
-        scraping or website).\n        \n        Use this endpoint to find leads that
-        are ready for email outreach.\n        "
-      summary: List leads with available emails
-      parameters:
-      - in: query
-        name: category
-        schema:
-          type: string
-        description: Filter by business category
       - in: query
         name: limit
         schema:
           type: integer
-        description: Maximum number of results (default 50)
+        description: Max results (default 50)
       - in: query
-        name: without_template
+        name: status
         schema:
-          type: boolean
-        description: Only return leads without an email template
+          type: string
+        description: 'Optional status filter (comma-separated). Default: pending'
       tags:
-      - AI Email Generation
+      - AI Campaigns
       security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - TokenAuth: []
+      - {}
       responses:
         '200':
           content:
@@ -558,805 +71,992 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/GmapsLeadList'
+                  $ref: '#/components/schemas/AICampaignRecipientList'
+          description: ''
+  /api/gmaps-leads/ai/campaigns/{campaign_id}/recipients/{recipient_id}/content/:
+    post:
+      operationId: aiSubmitCampaignRecipientContent
+      description: Attach subject/body to a campaign recipient. Sets status to ready
+        when mark_ready=true (default).
+      summary: 'AI: Submit rendered email content'
+      parameters:
+      - in: path
+        name: campaign_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: recipient_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - AI Campaigns
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AICampaignRecipientContent'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AICampaignRecipientContent'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AICampaignRecipientContent'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AICampaignRecipientContext'
+          description: ''
+  /api/gmaps-leads/ai/campaigns/{campaign_id}/recipients/{recipient_id}/context/:
+    get:
+      operationId: aiGetCampaignRecipientContext
+      description: Returns recipient context (lead/company/site text) for AI to render
+        personalized email.
+      summary: 'AI: Get campaign recipient context'
+      parameters:
+      - in: path
+        name: campaign_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: recipient_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - AI Campaigns
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AICampaignRecipientContext'
+          description: ''
+  /api/gmaps-leads/ai/campaigns/{campaign_id}/recipients/status/:
+    get:
+      operationId: aiCampaignRecipientStatus
+      description: Returns counts and recipient IDs grouped by status. Filter with
+        status param (comma-separated).
+      summary: 'AI: Recipient status counts'
+      parameters:
+      - in: path
+        name: campaign_id
+        schema:
+          type: integer
+        required: true
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: 'Optional status filter (comma-separated). Default: pending'
+      tags:
+      - AI Campaigns
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AICampaignRecipientStatus'
+          description: ''
+  /api/gmaps-leads/ai/memory/:
+    get:
+      operationId: ai_memory_list
+      description: 'GET: List all memories. POST: Create a new memory (note or progress).'
+      summary: List AI memories
+      tags:
+      - AI Assistant Memory
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AIMemory'
+          description: ''
+    post:
+      operationId: ai_memory_create
+      description: 'GET: List all memories. POST: Create a new memory (note or progress).'
+      summary: Create AI memory
+      tags:
+      - AI Assistant Memory
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AIMemory'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AIMemory'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AIMemory'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIMemory'
+          description: ''
+  /api/gmaps-leads/waha/campaigns/:
+    get:
+      operationId: api_gmaps_leads_waha_campaigns_list
+      description: Create/list WhatsApp campaigns scoped by scrape job.
+      summary: List WhatsApp campaigns
+      parameters:
+      - in: query
+        name: job_id
+        schema:
+          type: integer
+        description: Filter by scrape job id
+      tags:
+      - api
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WhatsAppCampaign'
+          description: ''
+    post:
+      operationId: api_gmaps_leads_waha_campaigns_create
+      description: Create/list WhatsApp campaigns scoped by scrape job.
+      summary: Create WhatsApp campaign
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WhatsAppCampaign'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/WhatsAppCampaign'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/WhatsAppCampaign'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhatsAppCampaign'
+          description: ''
+  /api/gmaps-leads/waha/campaigns/{campaign_id}/prepare/:
+    post:
+      operationId: api_gmaps_leads_waha_campaigns_prepare_create
+      description: Generate recipients for a campaign without sending.
+      summary: Prepare WhatsApp campaign recipients
+      parameters:
+      - in: path
+        name: campaign_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/gmaps-leads/waha/campaigns/{campaign_id}/recipients/:
+    get:
+      operationId: api_gmaps_leads_waha_campaigns_recipients_list
+      description: List recipients for a campaign.
+      summary: List WhatsApp campaign recipients
+      parameters:
+      - in: path
+        name: campaign_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WhatsAppCampaignRecipient'
+          description: ''
+  /api/gmaps-leads/waha/campaigns/{campaign_id}/run/:
+    post:
+      operationId: api_gmaps_leads_waha_campaigns_run_create
+      description: 'Run a WhatsApp campaign: build recipients from job leads, then
+        send with jitter and throttle.'
+      summary: Run WhatsApp campaign
+      parameters:
+      - in: path
+        name: campaign_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WhatsAppCampaign'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/WhatsAppCampaign'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/WhatsAppCampaign'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '206':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/gmaps-leads/waha/messages/send/:
+    post:
+      operationId: api_gmaps_leads_waha_messages_send_create
+      description: Send a WhatsApp text message via WAHA.
+      summary: Send WhatsApp text via WAHA
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WahaSendMessage'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/WahaSendMessage'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/WahaSendMessage'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/gmaps-leads/waha/messages/test/:
+    post:
+      operationId: api_gmaps_leads_waha_messages_test_create
+      description: 'Test helper: preview (dry_run) or send a single message using
+        template pools/templates/campaigns.'
+      summary: Preview or send a test WhatsApp message via WAHA
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WahaTestMessage'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/WahaTestMessage'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/WahaTestMessage'
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '206':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/gmaps-leads/waha/template-pools/:
+    get:
+      operationId: api_gmaps_leads_waha_template_pools_list
+      description: List/create WhatsApp template pools.
+      summary: List WhatsApp template pools
+      parameters:
+      - in: query
+        name: job_id
+        schema:
+          type: integer
+        description: Filter by job id
+      tags:
+      - api
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WhatsAppTemplatePool'
+          description: ''
+    post:
+      operationId: api_gmaps_leads_waha_template_pools_create
+      description: List/create WhatsApp template pools.
+      summary: Create WhatsApp template pool
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WhatsAppTemplatePool'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/WhatsAppTemplatePool'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/WhatsAppTemplatePool'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhatsAppTemplatePool'
+          description: ''
+  /api/gmaps-leads/waha/templates/:
+    get:
+      operationId: api_gmaps_leads_waha_templates_list
+      description: List/create WhatsApp templates.
+      summary: List WhatsApp templates
+      parameters:
+      - in: query
+        name: pool_id
+        schema:
+          type: integer
+        description: Filter by pool id
+      tags:
+      - api
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WhatsAppTemplate'
+          description: ''
+    post:
+      operationId: api_gmaps_leads_waha_templates_create
+      description: List/create WhatsApp templates.
+      summary: Create WhatsApp template
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WhatsAppTemplate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/WhatsAppTemplate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/WhatsAppTemplate'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhatsAppTemplate'
           description: ''
 components:
   schemas:
-    EmailTemplate:
+    AICampaign:
       type: object
-      description: |-
-        Full serializer for email template responses.
-
-        OpenAPI 3.1 Schema:
-        GET /api/email-templates/{id}/
-        GET /api/gmaps-leads/{lead_id}/email-templates/
       properties:
         id:
           type: integer
           readOnly: true
-        lead:
-          type: integer
-        lead_title:
-          type: string
-          readOnly: true
         name:
           type: string
-          nullable: true
-          description: Template name/identifier
           maxLength: 255
-        template_type:
-          $ref: '#/components/schemas/TemplateTypeEnum'
-        subject:
-          type: string
-          description: Email subject line
-          maxLength: 500
-        body_html:
-          type: string
-          description: Email body in HTML format (rich text)
-        body_plain:
-          type: string
-          nullable: true
-          description: Plain text version of email body
-        recipient_email:
-          type: string
-          format: email
-          nullable: true
-          description: Target email (defaults to lead's email)
-          maxLength: 254
-        recipient_name:
-          type: string
-          nullable: true
-          description: Recipient name for personalization
-          maxLength: 255
-        target_email:
-          type: string
-          readOnly: true
-        sender_name:
-          type: string
-          nullable: true
-          description: From name
-          maxLength: 255
-        sender_email:
-          type: string
-          format: email
-          nullable: true
-          description: From email
-          maxLength: 254
-        reply_to:
-          type: string
-          format: email
-          nullable: true
-          description: Reply-to email
-          maxLength: 254
         status:
-          $ref: '#/components/schemas/Status477Enum'
-        status_message:
+          $ref: '#/components/schemas/AICampaignStatusEnum'
+        provider_alias:
           type: string
-          nullable: true
-          description: Status details/error message
-        is_ready_to_send:
-          type: boolean
-          readOnly: true
-        ai_model:
-          type: string
-          nullable: true
-          description: AI model used for generation
+          description: Matches a key from EMAIL_PROVIDERS.
           maxLength: 100
-        ai_prompt_used:
-          type: string
-          nullable: true
-          description: Prompt used to generate this email
-        ai_generation_time:
-          type: number
-          format: double
-          nullable: true
-          description: Time taken to generate (seconds)
-        ai_tokens_used:
+        expected_recipients:
           type: integer
-          nullable: true
-          description: Tokens used in generation
-        is_personalized:
-          type: boolean
-          description: Whether AI personalized this for the specific lead
-        personalization_score:
+        sent_count:
+          type: integer
+        failed_count:
+          type: integer
+        skipped_count:
+          type: integer
+        progress_percent:
           type: number
           format: double
-          nullable: true
-          description: AI confidence score 0-1
-        variables:
-          description: 'Variables used in template: {var_name: value}'
-        sent_at:
-          type: string
-          format: date-time
           readOnly: true
-          nullable: true
-          description: When email was sent
-        opened_at:
-          type: string
+        last_dispatched_at:
+          type:
+          - string
+          - 'null'
           format: date-time
-          readOnly: true
-          nullable: true
-          description: When email was opened (if tracked)
-        clicked_at:
-          type: string
-          format: date-time
-          readOnly: true
-          nullable: true
-          description: When link was clicked (if tracked)
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
       required:
-      - body_html
-      - clicked_at
-      - created_at
       - id
-      - is_ready_to_send
-      - lead
-      - lead_title
-      - opened_at
-      - sent_at
-      - subject
-      - target_email
-      - updated_at
-    EmailTemplateCreate:
+      - name
+      - progress_percent
+    AICampaignRecipientContent:
       type: object
-      description: |-
-        Serializer for creating/updating email templates via API.
-
-        OpenAPI 3.1 Schema:
-        POST /api/gmaps-leads/{lead_id}/email-template/
-
-        Used by AI to submit generated email content.
       properties:
         subject:
           type: string
-          description: Email subject line
-          maxLength: 500
         body_html:
           type: string
-          description: Email body in HTML format (rich text)
-        body_plain:
+        body_text:
           type: string
-          nullable: true
-          description: Plain text version of email body
-        name:
-          type: string
-          nullable: true
-          description: Template name/identifier
-          maxLength: 255
-        template_type:
-          $ref: '#/components/schemas/TemplateTypeEnum'
-        recipient_email:
-          type: string
-          format: email
-          nullable: true
-          description: Target email (defaults to lead's email)
-          maxLength: 254
-        recipient_name:
-          type: string
-          nullable: true
-          description: Recipient name for personalization
-          maxLength: 255
-        sender_name:
-          type: string
-          nullable: true
-          description: From name
-          maxLength: 255
-        sender_email:
-          type: string
-          format: email
-          nullable: true
-          description: From email
-          maxLength: 254
-        reply_to:
-          type: string
-          format: email
-          nullable: true
-          description: Reply-to email
-          maxLength: 254
-        ai_model:
-          type: string
-          nullable: true
-          description: AI model used for generation
-          maxLength: 100
-        ai_prompt_used:
-          type: string
-          nullable: true
-          description: Prompt used to generate this email
-        ai_generation_time:
-          type: number
-          format: double
-          nullable: true
-          description: Time taken to generate (seconds)
-        ai_tokens_used:
-          type: integer
-          nullable: true
-          description: Tokens used in generation
-        is_personalized:
-          type: boolean
-          description: Whether AI personalized this for the specific lead
-        personalization_score:
-          type: number
-          format: double
-          nullable: true
-          description: AI confidence score 0-1
-        variables:
-          description: 'Variables used in template: {var_name: value}'
         mark_ready:
           type: boolean
-          writeOnly: true
-          default: false
-          description: If true, immediately mark template as 'ready' to send (emits
-            signal)
+          default: true
       required:
       - body_html
       - subject
-    EmailTemplateList:
+    AICampaignRecipientContext:
       type: object
-      description: Compact serializer for listing email templates.
       properties:
         id:
           type: integer
           readOnly: true
-        lead:
+        campaign_id:
           type: integer
-        lead_title:
+          readOnly: true
+        status:
+          $ref: '#/components/schemas/StatusDdeEnum'
+        email:
+          type: string
+          format: email
+          readOnly: true
+        business_name:
           type: string
           readOnly: true
+        category:
+          type:
+          - string
+          - 'null'
+          readOnly: true
+        website:
+          type: string
+          readOnly: true
+        full_text:
+          type: string
+          readOnly: true
+        context: {}
         subject:
           type: string
-          description: Email subject line
           maxLength: 500
-        template_type:
-          $ref: '#/components/schemas/TemplateTypeEnum'
+        body_html:
+          type: string
+        body_text:
+          type: string
+      required:
+      - business_name
+      - campaign_id
+      - category
+      - email
+      - full_text
+      - id
+      - website
+    AICampaignRecipientList:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        campaign_id:
+          type: integer
+          readOnly: true
         status:
-          $ref: '#/components/schemas/Status477Enum'
-        target_email:
+          $ref: '#/components/schemas/StatusDdeEnum'
+        email:
+          type: string
+          format: email
+          readOnly: true
+        business_name:
           type: string
           readOnly: true
-        is_personalized:
-          type: boolean
-          description: Whether AI personalized this for the specific lead
-        created_at:
-          type: string
-          format: date-time
+        category:
+          type:
+          - string
+          - 'null'
           readOnly: true
       required:
-      - created_at
+      - business_name
+      - campaign_id
+      - category
+      - email
       - id
-      - lead
-      - lead_title
-      - subject
-      - target_email
-    EmailTemplateStatusUpdateStatusEnum:
+    AICampaignRecipientStatus:
+      type: object
+      properties:
+        pending:
+          type: integer
+        ready:
+          type: integer
+        rendered:
+          type: integer
+        sending:
+          type: integer
+        sent:
+          type: integer
+        failed:
+          type: integer
+        skipped:
+          type: integer
+      required:
+      - failed
+      - pending
+      - ready
+      - rendered
+      - sending
+      - sent
+      - skipped
+    AICampaignStatusEnum:
       enum:
       - draft
       - ready
-      - approved
-      - rejected
+      - running
+      - paused
+      - completed
+      - stopped
       type: string
       description: |-
-        * `draft` - draft
-        * `ready` - ready
-        * `approved` - approved
-        * `rejected` - rejected
-    GmapsLead:
+        * `draft` - Draft
+        * `ready` - Ready
+        * `running` - Running
+        * `paused` - Paused
+        * `completed` - Completed
+        * `stopped` - Stopped
+    AIMemory:
       type: object
-      description: Serializer for GmapsLead model.
       properties:
         id:
           type: integer
           readOnly: true
-        job:
-          type: integer
-          nullable: true
-        input_id:
+        memory_type:
+          $ref: '#/components/schemas/MemoryTypeEnum'
+        content:
           type: string
-          nullable: true
-          description: Input batch ID
-          maxLength: 255
-        cid:
-          type: string
-          nullable: true
-          description: Google Maps CID
-          maxLength: 100
-        data_id:
-          type: string
-          nullable: true
-          description: Google Maps data ID
-          maxLength: 100
-        title:
-          type: string
-          description: Business name
-          maxLength: 500
-        link:
-          type: string
-          format: uri
-          nullable: true
-          description: Google Maps link
-          maxLength: 2000
-        category:
-          type: string
-          nullable: true
-          description: Business category
-          maxLength: 255
-        address:
-          type: string
-          nullable: true
-          description: Full address
-        phone:
-          type: string
-          nullable: true
-          description: Phone number
-          maxLength: 50
-        website:
-          type: string
-          format: uri
-          nullable: true
-          description: Business website
-          maxLength: 2000
-        plus_code:
-          type: string
-          nullable: true
-          description: Google Plus Code
-          maxLength: 100
-        emails:
-          type: string
-          nullable: true
-          description: Email addresses (comma-separated or JSON)
-        latitude:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,4}(?:\.\d{0,6})?$
-          nullable: true
-        longitude:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,4}(?:\.\d{0,6})?$
-          nullable: true
-        timezone:
-          type: string
-          nullable: true
-          description: Timezone
-          maxLength: 100
-        complete_address:
-          nullable: true
-          description: Parsed address as JSON (borough, street, city, postal_code,
-            state, country)
-        open_hours:
-          nullable: true
-          description: Opening hours as JSON
-        popular_times:
-          nullable: true
-          description: Popular times data as JSON
-        review_count:
-          type: integer
-          description: Number of reviews
-        review_rating:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,2}(?:\.\d{0,1})?$
-          nullable: true
-          description: Average rating
-        reviews_per_rating:
-          nullable: true
-          description: Review distribution per rating as JSON
-        reviews_link:
-          type: string
-          format: uri
-          nullable: true
-          description: Link to reviews
-          maxLength: 2000
-        user_reviews:
-          nullable: true
-          description: User reviews as JSON
-        user_reviews_extended:
-          nullable: true
-          description: Extended user reviews as JSON
-        thumbnail:
-          type: string
-          format: uri
-          nullable: true
-          description: Thumbnail image URL
-          maxLength: 2000
-        images:
-          nullable: true
-          description: Images as JSON array
-        status:
-          type: string
-          nullable: true
-          description: Business status
-          maxLength: 100
-        descriptions:
-          type: string
-          nullable: true
-          description: Business descriptions
-        price_range:
-          type: string
-          nullable: true
-          description: Price range indicator
-          maxLength: 50
-        about:
-          nullable: true
-          description: About section as JSON (accessibility, amenities, etc.)
-        reservations:
-          nullable: true
-          description: Reservation links as JSON
-        order_online:
-          nullable: true
-          description: Online ordering links as JSON
-        menu:
-          nullable: true
-          description: Menu link as JSON
-        owner:
-          nullable: true
-          description: Owner information as JSON (id, name, link)
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
-        city:
-          type: string
-          readOnly: true
-        country:
-          type: string
-          readOnly: true
-      required:
-      - city
-      - country
-      - created_at
-      - id
-      - title
-      - updated_at
-    GmapsLeadList:
-      type: object
-      description: Simplified serializer for listing leads.
-      properties:
-        id:
-          type: integer
-          readOnly: true
-        title:
-          type: string
-          description: Business name
-          maxLength: 500
-        category:
-          type: string
-          nullable: true
-          description: Business category
-          maxLength: 255
-        address:
-          type: string
-          nullable: true
-          description: Full address
-        phone:
-          type: string
-          nullable: true
-          description: Phone number
-          maxLength: 50
-        website:
-          type: string
-          format: uri
-          nullable: true
-          description: Business website
-          maxLength: 2000
-        review_count:
-          type: integer
-          description: Number of reviews
-        review_rating:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,2}(?:\.\d{0,1})?$
-          nullable: true
-          description: Average rating
-        city:
-          type: string
-          readOnly: true
+          description: Details of the memory or progress status (e.g., campaign id,
+            done/left counts, notes, etc.)
         created_at:
           type: string
           format: date-time
           readOnly: true
       required:
-      - city
+      - content
       - created_at
       - id
-      - title
-    LeadContext:
-      type: object
+      - memory_type
+    MemoryTypeEnum:
+      enum:
+      - note
+      - progress
+      type: string
       description: |-
-        Serializer providing comprehensive lead context for AI email generation.
-
-        OpenAPI 3.1 Schema:
-        GET /api/gmaps-leads/{id}/context/
-
-        Returns all relevant business information for personalized email generation.
-      properties:
-        id:
-          type: integer
-          readOnly: true
-        title:
-          type: string
-          description: Business name
-          maxLength: 500
-        category:
-          type: string
-          nullable: true
-          description: Business category
-          maxLength: 255
-        address:
-          type: string
-          nullable: true
-          description: Full address
-        complete_address:
-          nullable: true
-          description: Parsed address as JSON (borough, street, city, postal_code,
-            state, country)
-        phone:
-          type: string
-          nullable: true
-          description: Phone number
-          maxLength: 50
-        phone_type:
-          type: string
-          readOnly: true
-          description: 'Type: whatsapp, local, other, or none'
-        website:
-          type: string
-          format: uri
-          nullable: true
-          description: Business website
-          maxLength: 2000
-        emails:
-          type: string
-          nullable: true
-          description: Email addresses (comma-separated or JSON)
-        review_count:
-          type: integer
-          description: Number of reviews
-        review_rating:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,2}(?:\.\d{0,1})?$
-          nullable: true
-          description: Average rating
-        reviews_per_rating:
-          nullable: true
-          description: Review distribution per rating as JSON
-        latitude:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,4}(?:\.\d{0,6})?$
-          nullable: true
-        longitude:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,4}(?:\.\d{0,6})?$
-          nullable: true
-        timezone:
-          type: string
-          nullable: true
-          description: Timezone
-          maxLength: 100
-        plus_code:
-          type: string
-          nullable: true
-          description: Google Plus Code
-          maxLength: 100
-        open_hours:
-          nullable: true
-          description: Opening hours as JSON
-        about:
-          nullable: true
-          description: About section as JSON (accessibility, amenities, etc.)
-        descriptions:
-          type: string
-          nullable: true
-          description: Business descriptions
-        price_range:
-          type: string
-          nullable: true
-          description: Price range indicator
-          maxLength: 50
-        menu:
-          nullable: true
-          description: Menu link as JSON
-        reservations:
-          nullable: true
-          description: Reservation links as JSON
-        order_online:
-          nullable: true
-          description: Online ordering links as JSON
-        website_data:
-          type: string
-          readOnly: true
-          description: Scraped website content and extracted emails
-        whatsapp_contacts:
-          type: string
-          readOnly: true
-          description: WhatsApp contact info if available
-        available_emails:
-          type: string
-          readOnly: true
-          description: All available email addresses for this lead
-      required:
-      - available_emails
-      - id
-      - phone_type
-      - title
-      - website_data
-      - whatsapp_contacts
-    PatchedEmailTemplateStatusUpdate:
-      type: object
-      description: |-
-        Serializer for updating email template status.
-
-        OpenAPI 3.1 Schema:
-        PATCH /api/email-templates/{id}/status/
-      properties:
-        status:
-          allOf:
-          - $ref: '#/components/schemas/EmailTemplateStatusUpdateStatusEnum'
-          description: |-
-            New status for the template
-
-            * `draft` - draft
-            * `ready` - ready
-            * `approved` - approved
-            * `rejected` - rejected
-        status_message:
-          type: string
-          description: Optional message explaining status change
-    ScrapeJob:
-      type: object
-      description: Serializer for ScrapeJob model.
-      properties:
-        id:
-          type: integer
-          readOnly: true
-        external_id:
-          type: string
-          readOnly: true
-          description: External job ID from scraper API
-        name:
-          type: string
-          description: Job name/description
-          maxLength: 255
-        keywords:
-          description: List of search keywords
-        lang:
-          type: string
-          description: Language code
-          maxLength: 10
-        zoom:
-          type: integer
-          description: Map zoom level
-        lat:
-          type: string
-          nullable: true
-          description: Latitude
-          maxLength: 50
-        lon:
-          type: string
-          nullable: true
-          description: Longitude
-          maxLength: 50
-        fast_mode:
-          type: boolean
-          description: Enable fast mode
-        radius:
-          type: integer
-          nullable: true
-          description: Search radius
-        depth:
-          type: integer
-          description: Search depth
-        email:
-          type: boolean
-          description: Extract emails
-        max_time:
-          type: integer
-          description: Maximum time in seconds
-        proxies:
-          nullable: true
-          description: List of proxies
-        status:
-          allOf:
-          - $ref: '#/components/schemas/ScrapeJobStatusEnum'
-          readOnly: true
-        error_message:
-          type: string
-          readOnly: true
-          nullable: true
-        leads_count:
-          type: integer
-          readOnly: true
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
-        completed_at:
-          type: string
-          format: date-time
-          readOnly: true
-          nullable: true
-      required:
-      - completed_at
-      - created_at
-      - error_message
-      - external_id
-      - id
-      - keywords
-      - leads_count
-      - name
-      - status
-      - updated_at
-    ScrapeJobStatusEnum:
+        * `note` - Note
+        * `progress` - Progress Status
+    StatusDdeEnum:
       enum:
       - pending
-      - running
-      - completed
+      - ready
+      - rendered
+      - sending
+      - sent
+      - failed
+      - skipped
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `ready` - Ready
+        * `rendered` - Rendered
+        * `sending` - Sending
+        * `sent` - Sent
+        * `failed` - Failed
+        * `skipped` - Skipped
+    WahaSendMessage:
+      type: object
+      description: Request payload for sending a WhatsApp message via WAHA.
+      properties:
+        chat_id:
+          type: string
+          description: WhatsApp chatId (e.g., 905XXXXXXXX@c.us). Optional if phone
+            or lead_id is provided.
+        phone:
+          type: string
+          description: Digits-only phone number; formatted to chatId automatically
+            if chat_id not provided.
+        lead_id:
+          type: integer
+          description: Resolve the chatId from this lead's WhatsAppContact (creates
+            one if possible).
+        text:
+          type: string
+          description: Message text to send.
+        quoted_message_id:
+          type: string
+          description: Optional WAHA message id to quote/reply to.
+      required:
+      - text
+    WahaTestMessage:
+      type: object
+      description: |-
+        Preview or send a single WhatsApp message using a template/pool/campaign context.
+        Designed for testing message shape (text/media) without running a whole campaign.
+      properties:
+        chat_id:
+          type: string
+          description: e.g., 905XXXXXXXX@c.us
+        jid:
+          type: string
+          description: e.g., 905XXXXXXXX@s.whatsapp.net (will be normalized)
+        phone:
+          type: string
+          description: Digits-only or +E164; converted to chatId
+        text:
+          type: string
+          description: Raw text (optional if template_id/pool_id/campaign_id provided)
+        template_id:
+          type: integer
+          description: Use a specific WhatsAppTemplate
+        pool_id:
+          type: integer
+          description: Pick a random template from this pool
+        campaign_id:
+          type: integer
+          description: Use this campaign's pool/fallback settings
+        lead_id:
+          type: integer
+          description: Use lead fields for {{business_name}}, etc.
+        business_name:
+          type: string
+        category:
+          type: string
+        website:
+          type: string
+        dry_run:
+          type: boolean
+          default: true
+          description: When true, do not send; only preview payload
+        link_preview:
+          type:
+          - boolean
+          - 'null'
+        link_preview_high_quality:
+          type:
+          - boolean
+          - 'null'
+        reply_to:
+          type:
+          - string
+          - 'null'
+    WhatsAppCampaign:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 255
+        job_id:
+          type: integer
+          writeOnly: true
+        template_pool_id:
+          type:
+          - integer
+          - 'null'
+          writeOnly: true
+        template_pool:
+          type: integer
+          readOnly: true
+        text_template:
+          type: string
+          description: Fallback template if pool is empty. Supports {{business_name}},
+            {{category}}, {{website}}.
+        media_url:
+          type:
+          - string
+          - 'null'
+          format: uri
+          maxLength: 200
+        throttle_per_minute:
+          type: integer
+          description: Max messages per minute
+        delay_min_ms:
+          type: integer
+          description: Minimum delay between sends (ms)
+        delay_max_ms:
+          type: integer
+          description: Maximum delay between sends (ms)
+        status:
+          allOf:
+          - $ref: '#/components/schemas/WhatsAppCampaignStatusEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - job_id
+      - name
+      - status
+      - template_pool
+      - updated_at
+    WhatsAppCampaignRecipient:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        lead_id:
+          type: integer
+          readOnly: true
+        rendered_text:
+          type: string
+          readOnly: true
+        template_id:
+          type: integer
+          readOnly: true
+        media_url:
+          type:
+          - string
+          - 'null'
+          format: uri
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/WhatsAppCampaignRecipientStatusEnum'
+          readOnly: true
+        message_id:
+          type:
+          - string
+          - 'null'
+          readOnly: true
+        error:
+          type:
+          - string
+          - 'null'
+          readOnly: true
+        sent_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          readOnly: true
+      required:
+      - error
+      - id
+      - lead_id
+      - media_url
+      - message_id
+      - rendered_text
+      - sent_at
+      - status
+      - template_id
+    WhatsAppCampaignRecipientStatusEnum:
+      enum:
+      - pending
+      - sent
       - failed
       type: string
       description: |-
         * `pending` - Pending
-        * `running` - Running
-        * `completed` - Completed
+        * `sent` - Sent
         * `failed` - Failed
-    Status477Enum:
+    WhatsAppCampaignStatusEnum:
       enum:
       - draft
-      - generating
-      - ready
-      - approved
-      - sent
+      - running
+      - done
       - failed
-      - rejected
       type: string
       description: |-
         * `draft` - Draft
-        * `generating` - AI Generating
-        * `ready` - Ready to Send
-        * `approved` - Approved
-        * `sent` - Sent
+        * `running` - Running
+        * `done` - Done
         * `failed` - Failed
-        * `rejected` - Rejected
-    TemplateTypeEnum:
-      enum:
-      - outreach
-      - followup
-      - introduction
-      - proposal
-      - custom
-      type: string
-      description: |-
-        * `outreach` - Cold Outreach
-        * `followup` - Follow-up
-        * `introduction` - Introduction
-        * `proposal` - Business Proposal
-        * `custom` - Custom
-  securitySchemes:
-    cookieAuth:
-      type: apiKey
-      in: cookie
-      name: n8n_mirror_sessionid
-    tokenAuth:
-      type: apiKey
-      in: header
-      name: Authorization
-      description: Token-based authentication with required prefix "Token"
+    WhatsAppTemplate:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        pool:
+          allOf:
+          - $ref: '#/components/schemas/WhatsAppTemplatePool'
+          readOnly: true
+        pool_id:
+          type: integer
+          writeOnly: true
+        text:
+          type: string
+          description: Template text. Supports {{business_name}}, {{category}}, {{website}}.
+        media_url:
+          type:
+          - string
+          - 'null'
+          format: uri
+          maxLength: 200
+        weight:
+          type: integer
+          description: Weight for random selection
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - pool
+      - pool_id
+      - text
+      - updated_at
+    WhatsAppTemplatePool:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 255
+        job:
+          type:
+          - integer
+          - 'null'
+          readOnly: true
+        job_id:
+          type:
+          - integer
+          - 'null'
+          writeOnly: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - job
+      - name
+      - updated_at
 servers:
 - url: https://app.whatsynaptic.tech
   description: Production

@@ -52,6 +52,82 @@ class ChatwootClient:
         resp.raise_for_status()
         return resp.json() if resp.content else {}
 
+    # ------------------------------------------------------------------ #
+    # Contact helpers
+    # ------------------------------------------------------------------ #
+    def _flatten_payload(self, payload: Any) -> Any:
+        if isinstance(payload, list):
+            return payload
+        if isinstance(payload, dict):
+            return payload.get("payload") or payload.get("data") or payload
+        return payload
+
+    def find_contact(self, query: str) -> Optional[Dict[str, Any]]:
+        try:
+            res = self._request("GET", f"/accounts/{self.account_id}/contacts/search", params={"q": query})
+            data = self._flatten_payload(res)
+            if isinstance(data, list) and data:
+                return data[0]
+            if isinstance(data, dict) and data.get("id"):
+                return data
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Chatwoot search failed for %s: %s", query, exc)
+        return None
+
+    def ensure_contact_any(
+        self,
+        *,
+        phone: Optional[str] = None,
+        email: Optional[str] = None,
+        name: Optional[str] = None,
+        custom_attributes: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Find or create a contact using phone/email. Falls back to creation.
+        """
+        lookup = phone or email
+        contact = self.find_contact(lookup) if lookup else None
+        if contact:
+            return contact
+
+        payload = {
+            "name": name or (email or phone) or "Unknown",
+            "phone_number": phone,
+            "email": email,
+            "custom_attributes": custom_attributes or {},
+        }
+        try:
+            created = self._request("POST", f"/accounts/{self.account_id}/contacts", json=payload)
+            if isinstance(created, dict) and created.get("id"):
+                return created
+            # Fallback: search again if no id returned
+            contact = self.find_contact(lookup) if lookup else None
+            if contact:
+                return contact
+            return created
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Chatwoot create contact failed (%s): %s", lookup, exc)
+            # Attempt to re-fetch in case of duplicate
+            contact = self.find_contact(lookup) if lookup else None
+            if contact:
+                return contact
+            raise
+
+    def ensure_contact_inbox(self, contact_id: int, inbox_id: Optional[int], source_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Attach a contact to an inbox with a source_id (e.g., phone/jid).
+        """
+        if not inbox_id:
+            return {}
+        payload = {"inbox_id": int(inbox_id)}
+        if source_id:
+            payload["source_id"] = source_id
+        return self._request(
+            "POST",
+            f"/accounts/{self.account_id}/contacts/{contact_id}/contact_inboxes",
+            json=payload,
+        )
+
     def ensure_contact(self, email: str, name: Optional[str] = None, custom_attributes: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Find or create a Chatwoot contact by email."""
         try:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from email.utils import formataddr
 from typing import Any, Dict, Optional, Tuple, Union
 
 from django.conf import settings
@@ -147,13 +148,6 @@ def send_email(
         base_subject, base_html, base_text, context
     )
 
-    provider_alias, backend_path, connection_kwargs = _resolve_provider(metadata.get("provider"))
-    from_email = metadata.get("from_email") or (
-        template_obj.metadata.get("from_email") if template_obj and template_obj.metadata else None
-    ) or getattr(settings, "DEFAULT_FROM_EMAIL", None)
-
-    connection = get_connection(backend=backend_path, **{k: v for k, v in connection_kwargs.items() if v is not None})
-
     campaign = None
     campaign_recipient = None
     if metadata.get("campaign_id"):
@@ -166,6 +160,30 @@ def send_email(
             recipient = campaign_recipient.recipient
         if campaign_recipient and not email_address:
             email_address = campaign_recipient.email_address
+
+    provider_key = (
+        metadata.get("provider")
+        or (campaign_recipient.provider_alias if campaign_recipient else None)
+        or (campaign.provider_alias if campaign else None)
+    )
+    provider_alias, backend_path, connection_kwargs = _resolve_provider(provider_key)
+
+    from_email = (
+        metadata.get("from_email")
+        or (campaign.default_from_email if campaign and campaign.default_from_email else None)
+        or (template_obj.metadata.get("from_email") if template_obj and template_obj.metadata else None)
+        or getattr(settings, "DEFAULT_FROM_EMAIL", None)
+    )
+    from_name = (
+        metadata.get("from_name")
+        or (campaign.default_from_name if campaign and campaign.default_from_name else None)
+        or (template_obj.metadata.get("from_name") if template_obj and template_obj.metadata else None)
+        or ""
+    )
+    if from_name and from_email and "<" not in from_email:
+        from_email = formataddr((from_name, from_email))
+
+    connection = get_connection(backend=backend_path, **{k: v for k, v in connection_kwargs.items() if v is not None})
 
     record = EmailSend.objects.create(
         to_email=to_email,

@@ -1,0 +1,315 @@
+{% extends "admin/index.html" %}
+{% load static %}
+
+{% block extrahead %}
+{{ block.super }}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --admin-logo-url: url('/static/assets/images/logo-dark.svg'); /* set to url('/static/assets/images/logo-dark.svg') to override */
+}
+body,
+.content-wrapper,
+.main-header,
+.main-sidebar {
+  font-family: 'Ubuntu', 'Inter', system-ui, -apple-system, sans-serif;
+}
+.brand-link {
+  background-image: var(--admin-logo-url);
+  background-repeat: no-repeat;
+  background-position: 12px center;
+  background-size: 32px 32px;
+  padding-left: 56px;
+}
+.brand-link .brand-image {
+  display: none;
+}
+.custom-admin-dashboard {
+    margin-bottom: 24px;
+    width: 100%;
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .kpi-card {
+    background: linear-gradient(145deg, #1f2b3c, #1a2130);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 16px;
+    color: #e4edff;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+  .kpi-label {
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #9fb4d5;
+    margin-bottom: 6px;
+  }
+  .kpi-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: #ffffff;
+  }
+.chart-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 18px;
+    align-items: stretch;
+  }
+.chart-card {
+    background: #1a2130;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 14px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    position: relative;
+    min-height: 240px;
+  }
+.chart-card h3 {
+    margin: 0 0 12px;
+    font-size: 16px;
+    color: #e7f0ff;
+    letter-spacing: 0.01em;
+  }
+  .chart-card canvas {
+    width: 100% !important;
+    height: 200px !important;
+  }
+  .admin-modules {
+    margin-top: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    overflow: hidden;
+    display: none;
+  }
+  .admin-modules.active {
+    display: block;
+  }
+  .admin-modules-toggle {
+    margin-top: 20px;
+    margin-bottom: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: #111827;
+    color: #e7f0ff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+.admin-modules-toggle:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+  }
+  .apps-section {
+    margin-top: 22px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .app-card {
+    background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 14px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  }
+  .app-card h4 {
+    margin: 0 0 10px;
+    font-size: 15px;
+    color: #e2ecff;
+    letter-spacing: 0.01em;
+  }
+  .app-card ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .app-card li {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    color: #c9d8f3;
+    font-size: 14px;
+  }
+  .app-card li:last-child {
+    border-bottom: none;
+  }
+  .app-card a {
+    color: #7dd3fc;
+    text-decoration: none;
+  }
+  .app-card a:hover {
+    text-decoration: underline;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="custom-admin-dashboard">
+  <button class="admin-modules-toggle" type="button" data-target="admin-modules">
+    Show admin modules
+  </button>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label">Total Leads</div>
+      <div class="kpi-value">{{ dashboard.kpis.leads|default_if_none:"—" }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Total Scrape Jobs</div>
+      <div class="kpi-value">{{ dashboard.kpis.scrape_jobs|default_if_none:"—" }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Total Email Sends</div>
+      <div class="kpi-value">{{ dashboard.kpis.email_sends|default_if_none:"—" }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Workflow Executions</div>
+      <div class="kpi-value">{{ dashboard.kpis.executions|default_if_none:"—" }}</div>
+    </div>
+  </div>
+
+  <div class="chart-grid">
+    <div class="chart-card">
+      <h3>Leads • last 30 days</h3>
+      <canvas id="leadsChart" height="150"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Scrape Jobs • last 30 days</h3>
+      <canvas id="jobsChart" height="150"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Email Sends • last 30 days</h3>
+      <canvas id="emailsChart" height="150"></canvas>
+    </div>
+  </div>
+
+  {{ dashboard.charts.leads_30d|default_if_none:"[]"|json_script:"leads30d" }}
+  {{ dashboard.charts.jobs_30d|default_if_none:"[]"|json_script:"jobs30d" }}
+  {{ dashboard.charts.email_sends_30d|default_if_none:"[]"|json_script:"emails30d" }}
+
+  {% if dashboard.apps %}
+  <div class="apps-section">
+    {% for app in dashboard.apps %}
+    <div class="app-card">
+      <h4>{{ app.label }}</h4>
+      <ul>
+        {% for model in app.models %}
+        <li>
+          <span>{{ model.label }}</span>
+          {% if model.admin_url %}
+            <a href="{{ model.admin_url }}">{{ model.count|default_if_none:"—" }}</a>
+          {% else %}
+            <span>{{ model.count|default_if_none:"—" }}</span>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div id="admin-modules" class="admin-modules">
+    {{ block.super }}
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  (function() {
+    const datasets = [
+      { canvas: "leadsChart", dataId: "leads30d", label: "Leads", color: "#22d3ee" },
+      { canvas: "jobsChart", dataId: "jobs30d", label: "Scrape Jobs", color: "#a78bfa" },
+      { canvas: "emailsChart", dataId: "emails30d", label: "Email Sends", color: "#34d399" },
+    ];
+
+    function parseData(id) {
+      const el = document.getElementById(id);
+      if (!el) return [];
+      try {
+        return JSON.parse(el.textContent);
+      } catch (err) {
+        console.warn("Dashboard chart data parse failed", err);
+        return [];
+      }
+    }
+
+    function buildChart(target, data, label, color) {
+      const el = document.getElementById(target);
+      if (!el || !el.getContext) return;
+      const labels = data.map(point => point.date);
+      const values = data.map(point => point.count);
+      const ctx = el.getContext("2d");
+      new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [{
+            label: label,
+            data: values,
+            tension: 0.35,
+            fill: false,
+            borderColor: color,
+            backgroundColor: color,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              mode: "index",
+              intersect: false
+            }
+          },
+          scales: {
+            x: {
+              display: true,
+              ticks: { color: "#b8c7e0", maxRotation: 45, minRotation: 45 },
+              grid: { color: "rgba(255,255,255,0.05)" }
+            },
+            y: {
+              display: true,
+              beginAtZero: true,
+              ticks: { color: "#b8c7e0", precision: 0 },
+              grid: { color: "rgba(255,255,255,0.05)" }
+            }
+          }
+        }
+      });
+    }
+
+    datasets.forEach(set => {
+      const data = parseData(set.dataId);
+      buildChart(set.canvas, data, set.label, set.color);
+    });
+
+    const toggle = document.querySelector(".admin-modules-toggle");
+    const target = document.getElementById(toggle?.dataset.target || "admin-modules");
+    if (toggle && target) {
+      toggle.addEventListener("click", () => {
+        const isActive = target.classList.toggle("active");
+        toggle.textContent = isActive ? "Hide admin modules" : "Show admin modules";
+      });
+    }
+  })();
+</script>
+{% endblock %}

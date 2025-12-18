@@ -1,0 +1,118 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls %}
+
+{% block content %}
+  <div id="content-main">
+    <h1>{{ title }}</h1>
+    <p>
+      Campaign: <strong>{{ campaign.name }}</strong> (Job #{{ campaign.job_id }})
+      &nbsp;—&nbsp;
+      <a href="{% url 'admin:gmaps_leads_whatsappcampaign_change' campaign.pk|admin_urlquote %}">Back to campaign</a>
+    </p>
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+
+      <fieldset class="module aligned">
+        <h2>Recipient</h2>
+        <div class="form-row">
+          <label>phone</label>
+          <input type="text" name="phone" placeholder="+905XXXXXXXX" style="width: 320px;" />
+          <p class="help">Preferred: phone. Alternatively use jid or chat_id.</p>
+        </div>
+        <div class="form-row">
+          <label>jid</label>
+          <input type="text" name="jid" placeholder="905XXXXXXXX@s.whatsapp.net" style="width: 320px;" />
+        </div>
+        <div class="form-row">
+          <label>chat_id</label>
+          <input type="text" name="chat_id" placeholder="905XXXXXXXX@c.us" style="width: 320px;" />
+        </div>
+      </fieldset>
+
+      <fieldset class="module aligned">
+        <h2>Content Source</h2>
+        <div class="form-row">
+          <label>source</label>
+          <select name="source" style="width: 320px;">
+            <option value="campaign" selected>Use this campaign (pool/fallback)</option>
+            <option value="pool">Use pool</option>
+            <option value="template">Use template</option>
+            <option value="text">Use raw text</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label>pool</label>
+          <select name="pool_id" style="width: 320px;">
+            <option value="">--</option>
+            {% for p in pools %}
+              <option value="{{ p.id }}">{{ p.id }} - {{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label>template</label>
+          <select name="template_id" style="width: 320px;">
+            <option value="">--</option>
+            {% for t in templates %}
+              <option value="{{ t.id }}">{{ t.id }} - {{ t.pool.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label>text</label>
+          <textarea name="text" rows="4" style="width: 80%;" placeholder="Hi {{business_name}} ..."></textarea>
+        </div>
+      </fieldset>
+
+      <fieldset class="module aligned">
+        <h2>Render Context (optional)</h2>
+        <div class="form-row">
+          <label>lead_id</label>
+          <input type="number" name="lead_id" placeholder="123" style="width: 160px;" />
+          <p class="help">If set, placeholders come from the lead.</p>
+        </div>
+        <div class="form-row">
+          <label>business_name</label>
+          <input type="text" name="business_name" style="width: 320px;" />
+        </div>
+        <div class="form-row">
+          <label>category</label>
+          <input type="text" name="category" style="width: 320px;" />
+        </div>
+        <div class="form-row">
+          <label>website</label>
+          <input type="text" name="website" style="width: 320px;" />
+        </div>
+      </fieldset>
+
+      <fieldset class="module aligned">
+        <h2>Options</h2>
+        <div class="form-row">
+          <label style="display: inline-block; margin-right: 12px;">
+            <input type="checkbox" name="dry_run" checked /> Preview only
+          </label>
+          <label style="display: inline-block; margin-right: 12px;">
+            <input type="checkbox" name="link_preview" /> Link preview
+          </label>
+          <label style="display: inline-block;">
+            <input type="checkbox" name="link_preview_high_quality" /> HQ preview
+          </label>
+        </div>
+        <div class="form-row">
+          <label>reply_to</label>
+          <input type="text" name="reply_to" style="width: 320px;" />
+        </div>
+      </fieldset>
+
+      <div class="submit-row">
+        <button class="button" type="submit" name="submit_action" value="preview">Preview</button>
+        <button class="button default" type="submit" name="submit_action" value="send">Send now</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}
+
