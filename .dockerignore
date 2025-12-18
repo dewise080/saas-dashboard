@@ -10,8 +10,7 @@ __pycache__
 .Python
 venv/
 .venv/
-env/
-.env.local
+
 
 # IDE
 .vscode/
@@ -19,20 +18,7 @@ env/
 *.swp
 *.swo
 
-# Django
-*.log
-local_settings.py
-db.sqlite3
-staticfiles/
 
-# Node
-node_modules/
-npm-debug.log
-
-# Docker
-Dockerfile
-docker-compose*.yml
-.docker
 
 # Testing
 .coverage
