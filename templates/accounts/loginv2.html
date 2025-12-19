@@ -1,0 +1,48 @@
+
+    {% extends "layouts/base-auth.html" %}
+    {% load static %}
+
+    {% block title %}Login{% endblock title %}
+
+    {% block content %}
+    <div class="auth-wrapper aut-bg-img">
+        <div class="auth-content">
+            <div class="card">
+                <form method="post" class="card-body text-center">
+                    {% csrf_token %}
+
+                    <div class="mb-4">
+                        <i class="feather icon-user-plus auth-icon"></i>
+                    </div>
+                    <h3 class="mb-4">Login</h3>
+
+                    {% if form.non_field_errors %}
+                        {% for error in form.non_field_errors %}
+                            <span class="d-block text-danger mb-3">{{ error }}</span>
+                        {% endfor %}
+                    {% endif %}
+
+                    {% for field in form %}
+                    <div class="input-group mb-3">
+                        {{ field }}
+                    </div>
+                    {% endfor %}
+
+                    <div class="form-group text-left">
+                        <div class="checkbox checkbox-fill d-inline">
+                            <input type="checkbox" name="remember" id="checkbox-fill-2">
+                            <label for="checkbox-fill-2" class="cr">Remember me?</label>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <a href="{% url 'password_reset' %}" class="text-secondary f-w-400 mb-0">Forgot Password?</a>
+                    </div>
+                    <button type="submit" class="btn btn-primary shadow-2 mb-4">Login</button>
+                    <p class="mb-0 text-muted">Don't have an account? <a href="{% url 'accounts_plus:register' %}">Create Account</a></p>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endblock content %}
+
+
