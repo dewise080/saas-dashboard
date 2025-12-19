@@ -80,6 +80,26 @@ body,
     color: #e7f0ff;
     letter-spacing: 0.01em;
   }
+  .cw-item.editable {
+    position: relative;
+    cursor: move;
+  }
+  .cw-item .cw-delete {
+    display: none;
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: #ef4444;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .cw-item.editable .cw-delete {
+    display: inline-block;
+  }
   .chart-card canvas {
     width: 100% !important;
     height: 200px !important;
@@ -183,9 +203,14 @@ body,
 
 {% block content %}
 <div class="custom-admin-dashboard">
-  <button class="admin-modules-toggle" type="button" data-target="admin-modules">
-    Show admin modules
-  </button>
+  <div class="admin-controls" style="display:flex; gap:10px; align-items:center; margin-bottom:10px;">
+    <button class="admin-modules-toggle" type="button" data-target="admin-modules">
+      Show admin modules
+    </button>
+    <button id="toggleEditLayout" type="button" class="admin-modules-toggle" style="background:#0b1727;">
+      Enable layout edit
+    </button>
+  </div>
   <div class="kpi-grid">
     <div class="kpi-card">
       <div class="kpi-label">Total Leads</div>
@@ -212,6 +237,66 @@ body,
       <div class="kpi-value">{{ dashboard.kpis.notifier_failed|default_if_none:"—" }}</div>
     </div>
   </div>
+
+  <div class="pie-grid">
+    <div class="pie-card">
+      <h4>Phones (WhatsApp vs others)</h4>
+      <canvas id="phonePie" height="180"></canvas>
+    </div>
+    <div class="pie-card">
+      <h4>Websites present</h4>
+      <canvas id="websitePie" height="180"></canvas>
+    </div>
+    <div class="pie-card">
+      <h4>Emails present</h4>
+      <canvas id="emailPie" height="180"></canvas>
+    </div>
+  </div>
+
+  {% if dashboard.custom_widgets %}
+  <div id="customWidgetsGrid" class="chart-grid" style="margin-top:18px;">
+    {% for widget in dashboard.custom_widgets %}
+      {% if widget.type == 'kpi' %}
+      <div class="chart-card cw-item" data-id="{{ widget.id }}">
+        <h3>{{ widget.title }}</h3>
+        <div class="kpi-value" style="margin-top:12px;">{{ widget.data.value|default_if_none:"—" }}</div>
+      </div>
+      {% elif widget.type == 'pie' %}
+      <div class="chart-card cw-item" data-id="{{ widget.id }}">
+        <h3>{{ widget.title }}</h3>
+        <canvas id="cw-pie-{{ forloop.counter }}" height="150" data-labels="{{ widget.data.labels|join:',' }}" data-values="{{ widget.data.values|join:',' }}"></canvas>
+      </div>
+      {% elif widget.type == 'line' %}
+      <div class="chart-card cw-item" data-id="{{ widget.id }}">
+        <h3>{{ widget.title }}</h3>
+        <canvas id="cw-line-{{ forloop.counter }}" height="150" data-series="{{ widget.data|default_if_none:'[]'|json_script:'cwline'|safe }}"></canvas>
+      </div>
+      {% elif widget.type == 'table' %}
+      <div class="chart-card cw-item" data-id="{{ widget.id }}">
+        <h3>{{ widget.title }}</h3>
+        {% if widget.data.rows %}
+        <div style="max-height:200px; overflow:auto; color:#e2ecff; font-size:13px;">
+          {% for row in widget.data.rows %}
+            <div style="border-bottom:1px solid rgba(255,255,255,0.08); padding:6px 0;">
+              {% for key, val in row.items %}
+                <div><strong>{{ key }}</strong>: {{ val }}</div>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+        {% else %}
+          <p class="text-muted">No rows.</p>
+        {% endif %}
+      </div>
+      {% elif widget.type == 'text' %}
+      <div class="chart-card cw-item" data-id="{{ widget.id }}">
+        <h3>{{ widget.title }}</h3>
+        <p style="color:#c9d8f3; margin:0;">{{ widget.data.text }}</p>
+      </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
 
   <div class="chart-grid">
     <div class="chart-card">
@@ -254,6 +339,7 @@ body,
   {{ dashboard.charts.lead_phone_breakdown|default_if_none:"{}"|json_script:"leadPhoneBreakdown" }}
   {{ dashboard.charts.lead_website_breakdown|default_if_none:"{}"|json_script:"leadWebsiteBreakdown" }}
   {{ dashboard.charts.lead_email_breakdown|default_if_none:"{}"|json_script:"leadEmailBreakdown" }}
+  {{ dashboard.custom_widgets|default_if_none:"[]"|json_script:"customWidgets" }}
 
   {% if dashboard.apps %}
   <div class="apps-section">
@@ -414,12 +500,138 @@ body,
       );
     }
 
+    // Custom widgets
+    const customWidgets = parseData("customWidgets");
+    if (Array.isArray(customWidgets)) {
+      customWidgets.forEach((w, idx) => {
+        if (w.type === "pie" && w.data) {
+          const el = document.getElementById(`cw-pie-${idx + 1}`);
+          if (el) {
+            buildPie(`cw-pie-${idx + 1}`, w.data.values || [], w.data.labels || [], ["#22d3ee","#a78bfa","#34d399","#f59e0b","#f472b6","#38bdf8","#c084fc","#fb7185","#cbd5e1","#0ea5e9","#8b5cf6","#06b6d4"]);
+          }
+        } else if (w.type === "line" && Array.isArray(w.data)) {
+          const el = document.getElementById(`cw-line-${idx + 1}`);
+          if (el && el.getContext) {
+            const ctx = el.getContext("2d");
+            const labels = w.data.map(p => p.date);
+            const values = w.data.map(p => p.count);
+            new Chart(ctx, {
+              type: "line",
+              data: {
+                labels,
+                datasets: [{
+                  data: values,
+                  tension: 0.35,
+                  fill: false,
+                  borderColor: "#c084fc",
+                  backgroundColor: "#c084fc",
+                  pointRadius: 3,
+                }]
+              },
+              options: { plugins: { legend: { display: false } }, responsive: true, maintainAspectRatio: false }
+            });
+          }
+        }
+      });
+    }
+
     const toggle = document.querySelector(".admin-modules-toggle");
     const target = document.getElementById(toggle?.dataset.target || "admin-modules");
     if (toggle && target) {
       toggle.addEventListener("click", () => {
         const isActive = target.classList.toggle("active");
         toggle.textContent = isActive ? "Hide admin modules" : "Show admin modules";
+      });
+    }
+
+    // Drag-and-drop for custom widgets
+    const editBtn = document.getElementById("toggleEditLayout");
+    const grid = document.getElementById("customWidgetsGrid");
+    const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || (document.cookie.split('; ').find(r => r.startsWith('csrftoken='))||'').split('=')[1];
+    const reorderUrl = "{% url 'admin:core_dashboard_dashboardwidget_reorder' %}";
+    const deleteUrlBase = "{% url 'admin:core_dashboard_dashboardwidget_delete_ajax' 0 %}".replace(/0\/$/, '');
+
+    let editMode = false;
+    let dragSrcEl = null;
+
+    function enableEditMode(enable) {
+      editMode = enable;
+      document.querySelectorAll(".cw-item").forEach(el => {
+        el.classList.toggle("editable", enable);
+        if (enable) {
+          el.setAttribute("draggable", "true");
+          let del = el.querySelector(".cw-delete");
+          if (!del) {
+            del = document.createElement("button");
+            del.textContent = "Delete";
+            del.className = "cw-delete";
+            del.addEventListener("click", (e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              const id = el.dataset.id;
+              if (confirm("Delete this widget?")) {
+                fetch(`${deleteUrlBase}/${id}/`, {method:"POST", headers: {"X-CSRFToken": csrfToken}}).then(r => r.json()).then(() => {
+                  el.remove();
+                });
+              }
+            });
+            el.appendChild(del);
+          }
+        } else {
+          el.removeAttribute("draggable");
+        }
+      });
+    }
+
+    function saveOrder() {
+      if (!grid) return;
+      const order = Array.from(grid.querySelectorAll(".cw-item")).map(el => parseInt(el.dataset.id, 10));
+      fetch(reorderUrl, {
+        method: "POST",
+        headers: {"Content-Type": "application/json", "X-CSRFToken": csrfToken},
+        body: JSON.stringify({order})
+      });
+    }
+
+    function handleDragStart(e) {
+      dragSrcEl = this;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/html', this.outerHTML);
+      this.classList.add('dragging');
+    }
+
+    function handleDragOver(e) {
+      if (e.preventDefault) e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      return false;
+    }
+
+    function handleDrop(e) {
+      if (e.stopPropagation) e.stopPropagation();
+      if (dragSrcEl !== this) {
+        this.parentNode.insertBefore(dragSrcEl, this.nextSibling);
+        saveOrder();
+      }
+      return false;
+    }
+
+    function handleDragEnd() {
+      this.classList.remove('dragging');
+    }
+
+    if (editBtn && grid) {
+      editBtn.addEventListener("click", () => {
+        enableEditMode(!editMode);
+        editBtn.textContent = editMode ? "Disable layout edit" : "Enable layout edit";
+        if (editMode) {
+          const items = grid.querySelectorAll(".cw-item");
+          items.forEach(item => {
+            item.addEventListener('dragstart', handleDragStart, false);
+            item.addEventListener('dragover', handleDragOver, false);
+            item.addEventListener('drop', handleDrop, false);
+            item.addEventListener('dragend', handleDragEnd, false);
+          });
+        }
       });
     }
   })();

@@ -11,6 +11,8 @@ from django.db.models.functions import TruncDate
 from django.urls import reverse
 from django.utils import timezone
 
+from core_dashboard.models import DashboardWidget
+
 logger = logging.getLogger(__name__)
 
 DATE_FIELD_CANDIDATES = [
@@ -131,7 +133,7 @@ def _series_for_model(model: models.Model, label: str) -> List[Dict[str, object]
 
 
 def build_dashboard_data() -> Dict[str, dict]:
-    cache_key = "admin_dashboard_payload_v1"
+    cache_key = "admin_dashboard_payload_v2"
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
@@ -222,6 +224,62 @@ def build_dashboard_data() -> Dict[str, dict]:
         data["charts"]["lead_phone_breakdown"] = {}
         data["charts"]["lead_website_breakdown"] = {}
         data["charts"]["lead_email_breakdown"] = {}
+
+    # Custom widgets
+    custom_widgets = []
+    widgets = DashboardWidget.objects.filter(enabled=True).order_by("order", "id")
+    for widget in widgets:
+        model = None
+        if widget.app_label and widget.model_name:
+            model = get_model(widget.app_label, widget.model_name)
+        widget_payload = {"id": widget.id, "title": widget.title, "type": widget.widget_type, "data": None}
+        try:
+            if widget.widget_type == "text":
+                widget_payload["data"] = {"text": widget.text_content or ""}
+            elif model:
+                qs = model._meta.default_manager.all()
+                if widget.filters:
+                    try:
+                        qs = qs.filter(**widget.filters)
+                    except Exception as exc:  # defensive
+                        logger.warning("Dashboard widget filter error %s: %s", widget.title, exc)
+                if widget.widget_type == "kpi":
+                    widget_payload["data"] = {"value": qs.count()}
+                elif widget.widget_type == "pie":
+                    if widget.group_field:
+                        rows = qs.values(widget.group_field).annotate(count=Count("id")).order_by("-count")[:12]
+                        widget_payload["data"] = {
+                            "labels": [row[widget.group_field] or "—" for row in rows],
+                            "values": [row["count"] for row in rows],
+                        }
+                elif widget.widget_type == "line":
+                    field_name, is_datetime = _find_date_field(model)
+                    if field_name:
+                        start_date = timezone.now().date() - timedelta(days=29)
+                        trunc_kwargs = {"tzinfo": timezone.get_current_timezone()} if is_datetime else {}
+                        filter_field = f"{field_name}__date__gte" if is_datetime else f"{field_name}__gte"
+                        rows = (
+                            qs.filter(**{filter_field: start_date})
+                            .annotate(day=TruncDate(field_name, **trunc_kwargs))
+                            .values("day")
+                            .annotate(count=Count("id"))
+                            .order_by("day")
+                        )
+                        counts = {row["day"]: row["count"] for row in rows if row["day"] is not None}
+                        series = []
+                        for offset in range(30):
+                            day = start_date + timedelta(days=offset)
+                            series.append({"date": day.isoformat(), "count": int(counts.get(day, 0) or 0)})
+                        widget_payload["data"] = series
+                elif widget.widget_type == "table":
+                    fields = widget.fields or ["id"]
+                    rows = qs.values(*fields)[: widget.limit or 5]
+                    widget_payload["data"] = {"fields": fields, "rows": list(rows)}
+            custom_widgets.append(widget_payload)
+        except Exception as exc:  # defensive
+            logger.warning("Dashboard: custom widget %s failed: %s", widget.title, exc)
+            continue
+    data["custom_widgets"] = custom_widgets
 
     chart_targets = [
         ("leads_30d", "gmaps_leads", "GmapsLead"),
