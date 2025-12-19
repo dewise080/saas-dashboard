@@ -83,6 +83,7 @@ body,
   .cw-item.editable {
     position: relative;
     cursor: move;
+    border: 1px dashed rgba(255,255,255,0.25);
   }
   .cw-item .cw-delete {
     display: none;
@@ -99,6 +100,11 @@ body,
   }
   .cw-item.editable .cw-delete {
     display: inline-block;
+  }
+  #customWidgetsGrid.edit-mode {
+    border: 1px dashed rgba(255,255,255,0.2);
+    padding: 8px;
+    border-radius: 10px;
   }
   .chart-card canvas {
     width: 100% !important;
@@ -556,6 +562,9 @@ body,
 
     function enableEditMode(enable) {
       editMode = enable;
+      if (grid) {
+        grid.classList.toggle("edit-mode", enable);
+      }
       document.querySelectorAll(".cw-item").forEach(el => {
         el.classList.toggle("editable", enable);
         if (enable) {
@@ -621,6 +630,10 @@ body,
 
     if (editBtn && grid) {
       editBtn.addEventListener("click", () => {
+        if (!grid.querySelector(".cw-item")) {
+          alert("No custom widgets to edit. Add one via Admin > Dashboard Widgets.");
+          return;
+        }
         enableEditMode(!editMode);
         editBtn.textContent = editMode ? "Disable layout edit" : "Enable layout edit";
         if (editMode) {
