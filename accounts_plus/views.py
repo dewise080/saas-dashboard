@@ -135,7 +135,7 @@ def register_user(request):
     else:
         form = EmailRegistrationForm()
 
-    return render(request, "accounts/register.html", {"form": form})
+    return render(request, "accounts/registerv2.html", {"form": form})
 
 
 @require_http_methods(["GET", "POST"])
@@ -157,4 +157,4 @@ def login_user(request):
         )
         return redirect(reverse("apps.pages:index"))
 
-    return render(request, "accounts/login.html", {"form": form})
+    return render(request, "accounts/loginv2.html", {"form": form})

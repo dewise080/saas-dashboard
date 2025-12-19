@@ -1,0 +1,38 @@
+
+    {% extends "layouts/base-auth.html" %}
+    {% load static %}
+
+    {% block title %}Register{% endblock title %}
+
+    {% block content %}
+    <div class="auth-wrapper" style="position:relative;">
+        <video autoplay muted loop playsinline id="bg-video" style="position:fixed;top:0;left:0;width:100vw;height:100vh;object-fit:cover;z-index:1;">
+            <source src="{% static 'assets/images/bg-images/b4.mp4' %}" type="video/mp4">
+        </video>
+        <div class="auth-content" style="position:relative;z-index:2;">
+            <div class="card">
+                <form method="post" class="card-body text-center">
+                    {% csrf_token %}
+                    <div class="mb-4">
+                        <img src="{% static 'assets/images/logo-dark.png' %}" alt="Logo" style="height:48px;">
+                    </div>
+                    <h3 class="mb-4">Sign up</h3>
+                    {% for field in form %}
+                    <div class="form-group mb-3">
+                        {{ field }}
+                        <span class="d-block mt-1 text-danger">{{ field.errors }}</span>
+                    </div>
+                    {% endfor %}
+                    <div class="form-group text-left">
+                        <div class="checkbox checkbox-fill d-inline">
+                            <input class="form-check-input input-primary" type="checkbox" id="customCheckc1" checked="">
+                            <label class="form-check-label text-muted" for="customCheckc1">I agree to all the Terms & Condition</label>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary shadow-2 mb-4">Sign up</button>
+                    <p class="mb-0 text-muted">Already have an account? <a href="{% url 'accounts_plus:login' %}">Login</a></p>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endblock content %}
