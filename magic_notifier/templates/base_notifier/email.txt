@@ -1,0 +1,5 @@
+{% load i18n %}
+{% block content %}
+{% endblock %}
+
+{% block footer_unsuscribe %}{% trans "If you do not wish to receive any further emails from us, please" %} <a href="#" target="_blank">{% trans "Unsubscribe" %}</a>{% endblock %}

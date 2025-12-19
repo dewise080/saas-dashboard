@@ -396,6 +396,10 @@ class WahaContactSyncSerializer(serializers.Serializer):
     force_refresh = serializers.BooleanField(
         default=False, help_text="Rebuild WhatsAppContact records even if they already exist."
     )
+    skip_synced = serializers.BooleanField(
+        default=True,
+        help_text="Skip leads whose WhatsAppContact has already synced to WAHA (unless force_refresh=True).",
+    )
 
 
 class WahaSendMessageSerializer(serializers.Serializer):

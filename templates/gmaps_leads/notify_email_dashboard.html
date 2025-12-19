@@ -1,0 +1,190 @@
+{% extends 'layouts/base.html' %}
+{% load static %}
+{% block title %}Email Campaign Review{% endblock title %}
+
+{% block content %}
+<div class="row mb-3">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body d-flex justify-content-between align-items-center">
+        <div>
+          <h4 class="mb-1">Email Campaign Recipient Review</h4>
+          <p class="mb-0 text-muted">Review and send one-by-one. Not bulk.</p>
+        </div>
+        <form class="d-flex align-items-center" method="get" action="">
+          <div class="me-2">
+            <label class="form-label small mb-1">Email campaign</label>
+            <select class="form-select" name="email_campaign" onchange="this.form.submit()">
+              {% for c in email_campaigns %}
+              <option value="{{ c.id }}" {% if c.id == selected_email_campaign %}selected{% endif %}>{{ c.name }} ({{ c.status }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="me-2">
+            <label class="form-label small mb-1">Theme</label>
+            <select class="form-select" name="email_theme" onchange="this.form.submit()">
+              <option value="dark" {% if email_theme == "dark" %}selected{% endif %}>Dark</option>
+              <option value="light" {% if email_theme == "light" %}selected{% endif %}>Light</option>
+            </select>
+          </div>
+          <div class="me-2">
+            <label class="form-label small mb-1">Limit</label>
+            <input type="number" class="form-control" name="limit" value="{{ limit }}" min="10" max="500" />
+          </div>
+          <button class="btn btn-outline-primary mt-4" type="submit">Load</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body" style="max-height:75vh; overflow:auto;">
+    {% if email_recipients %}
+      {% for r in email_recipients %}
+      <div class="border rounded p-3 mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div>
+            <div class="fw-bold">{% if r.email_address %}{{ r.email_address.email }}{% else %}(no email){% endif %} {% if r.recipient %}- {{ r.recipient.full_name }}{% endif %}</div>
+            <small class="text-muted">ID {{ r.id }} · Status <span data-status="{{ r.id }}">{{ r.status }}</span> · Campaign #{{ r.campaign_id }}</small>
+          </div>
+          <div class="btn-group">
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'gmaps_leads:notify_email_preview' r.id %}?theme={{ email_theme }}" target="_blank">Preview</a>
+            <button class="btn btn-sm btn-primary" data-email-send data-id="{{ r.id }}">Send</button>
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label small">Subject</label>
+          <input type="text" class="form-control form-control-sm" data-subject-input="{{ r.id }}" value="{{ r.subject }}">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small">Body (HTML)</label>
+          <textarea class="form-control ckeditor" id="editor-{{ r.id }}" rows="6">{% if r.body_html %}{{ r.body_html|safe }}{% else %}{{ r.body_text }}{% endif %}</textarea>
+        </div>
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="btn-group">
+            <button class="btn btn-sm btn-outline-primary" data-email-save data-id="{{ r.id }}">Save</button>
+            <button class="btn btn-sm btn-primary" data-email-send data-id="{{ r.id }}">Send</button>
+          </div>
+          <div class="text-muted small" data-status-msg="{{ r.id }}"></div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="text-muted">No recipients loaded.</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row mt-3">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header"><h6 class="mb-0">Log</h6></div>
+      <div class="card-body">
+        <pre id="notify-log" class="mb-0" style="min-height:140px; background:#0b1727; color:#d1e4ff; padding:12px; border-radius:8px;">Ready.</pre>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %}
+
+{% block extrascript %}
+<script src="{% static 'ckeditor/ckeditor/ckeditor.js' %}"></script>
+<script>
+(function() {
+  const logEl = document.getElementById('notify-log');
+  const csrftoken = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value;
+  const emailSendButtons = document.querySelectorAll('[data-email-send]');
+  const emailSaveButtons = document.querySelectorAll('[data-email-save]');
+  const log = (msg) => {
+    const ts = new Date().toLocaleTimeString();
+    logEl.textContent = `[${ts}] ${msg}\n` + logEl.textContent;
+  };
+
+  if (window.CKEDITOR) {
+    document.querySelectorAll('textarea.ckeditor').forEach((ta) => {
+      const existing = CKEDITOR.instances[ta.id];
+      if (existing) {
+        existing.destroy(true);
+      }
+      CKEDITOR.replace(ta.id, {height: 220});
+    });
+  }
+
+  emailSendButtons.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-id');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      try {
+        const res = await fetch(`/api/gmaps-leads/notify/email/recipient/${id}/send/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrftoken,
+          },
+          body: JSON.stringify({ email_theme: "{{ email_theme }}" })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          log(`Email recipient #${id} sent (${data.email || ''}).`);
+          btn.classList.remove('btn-primary');
+          btn.classList.add('btn-outline-secondary');
+          btn.textContent = 'Sent';
+        } else {
+          log(`Email recipient #${id} failed: ${data.error || res.status}`);
+          btn.disabled = false;
+          btn.textContent = 'Send';
+        }
+      } catch (err) {
+        log(`Email recipient #${id} error: ${err}`);
+        btn.disabled = false;
+        btn.textContent = 'Send';
+      }
+    });
+  });
+
+  emailSaveButtons.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-id');
+      const subjectEl = document.querySelector(`[data-subject-input="${id}"]`);
+      const statusEl = document.querySelector(`[data-status-msg="${id}"]`);
+      const editor = window.CKEDITOR && CKEDITOR.instances[`editor-${id}`];
+      const body_html = editor ? editor.getData() : '';
+      const body_text = '';
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      try {
+        const res = await fetch(`/api/gmaps-leads/notify/email/recipient/${id}/update/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrftoken,
+          },
+          body: JSON.stringify({
+            subject: subjectEl ? subjectEl.value : '',
+            body_html,
+            body_text,
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          log(`Email recipient #${id} saved.`);
+          if (statusEl) statusEl.textContent = 'Saved';
+          const statusBadge = document.querySelector(`[data-status="${id}"]`);
+          if (statusBadge && data.status) statusBadge.textContent = data.status;
+        } else {
+          log(`Save failed for #${id}: ${data.error || res.status}`);
+          if (statusEl) statusEl.textContent = 'Save failed';
+        }
+      } catch (err) {
+        log(`Email recipient #${id} save error: ${err}`);
+        if (statusEl) statusEl.textContent = 'Save error';
+      }
+      btn.disabled = false;
+      btn.textContent = 'Save';
+    });
+  });
+})();
+</script>
+{% endblock extrascript %}

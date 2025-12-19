@@ -16,6 +16,7 @@ Including another URLconf
 from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
+from django.views.generic import RedirectView
 from rest_framework.authtoken.views import obtain_auth_token # <-- NEW
 from rest_framework.renderers import JSONOpenAPIRenderer
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
@@ -31,6 +32,8 @@ urlpatterns = [
     # Google Maps Leads (UI only, API is unified below)
     path("gmaps-leads/", include(("gmaps_leads.urls", "gmaps_leads"), namespace="gmaps_leads")),
     path("", include('admin_datta.urls')),
+    # Convenience redirect for outreach UI when coming from admin path
+    path("admin/gmaps-leads/notify/", RedirectView.as_view(url="/gmaps-leads/notify/", permanent=False)),
     path("admin/", admin.site.urls),
 
     # Unified API schema: all gmaps_leads API endpoints under /api/gmaps-leads/

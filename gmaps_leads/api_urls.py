@@ -24,6 +24,13 @@ urlpatterns = [
     path("waha/template-pools/", views.WhatsAppTemplatePoolAPIView.as_view(), name="waha-template-pools"),
     path("waha/templates/", views.WhatsAppTemplateAPIView.as_view(), name="waha-templates"),
 
+    # New notifier-based bulk send endpoints (preferred)
+    path("notify/email/send/", views.EmailBlastAPIView.as_view(), name="notify-email-send"),
+    path("notify/whatsapp/send/", views.WhatsAppBlastAPIView.as_view(), name="notify-whatsapp-send"),
+    path("notify/email/recipient/<int:recipient_id>/send/", views.EmailRecipientSendAPIView.as_view(), name="notify-email-recipient-send"),
+    path("notify/email/recipient/<int:recipient_id>/update/", views.EmailRecipientUpdateAPIView.as_view(), name="notify-email-recipient-update"),
+    path("notify/whatsapp/recipient/<int:recipient_id>/send/", views.WhatsAppRecipientSendAPIView.as_view(), name="notify-whatsapp-recipient-send"),
+
     # Chatwoot contacts sync
     path("chatwoot/contacts/sync/", views.ChatwootContactSyncAPIView.as_view(), name="chatwoot-contact-sync"),
 

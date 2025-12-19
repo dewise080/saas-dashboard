@@ -1,0 +1,63 @@
+{% load i18n %}
+<!doctype html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+  <title></title>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=Saira:wght@400;600;700&display=swap" rel="stylesheet">
+  <style type="text/css">
+    #outlook a { padding:0; }
+    body { margin:0; padding:0; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; font-family:'Saira', 'Helvetica Neue', Arial, sans-serif; }
+    table, td { border-collapse:collapse; mso-table-lspace:0pt; mso-table-rspace:0pt; }
+    img { border:0; height:auto; line-height:100%; outline:none; text-decoration:none; -ms-interpolation-mode:bicubic; }
+    p { margin:13px 0; }
+    .card { border-radius:18px; overflow:hidden; box-shadow:{% block card_shadow %}0 18px 55px rgba(0,0,0,0.12){% endblock %}; background:{% block card_background %}#ffffff{% endblock %}; }
+    .brand { background:{% block brand_background %}linear-gradient(135deg, #0b66f5 0%, #12d4ff 100%){% endblock %}; color:{% block brand_text_color %}#ffffff{% endblock %}; padding:28px 32px; }
+    .logo { display:inline-block; height:48px; margin-bottom:8px; }
+    .body { padding:32px; color:{% block body_text_color %}#0f172a{% endblock %}; background:{% block body_panel_background %}#f5f7fa{% endblock %}; }
+    .h1 { margin-top:14px; font-size:30px; font-weight:800; line-height:1.25; letter-spacing:-0.5px; }
+    .divider { height:1px; background:{% block divider_color %}#e4eaf3{% endblock %}; margin:22px 0 12px 0; }
+    .footer { font-size:13px; color:{% block footer_text_color %}#6b7a90{% endblock %}; line-height:1.6; padding:0 32px 28px 32px; }
+    .footer a { color:{% block footer_link_color %}#0b66f5{% endblock %}; text-decoration:none; }
+    .button { display:inline-block; padding:12px 18px; border-radius:12px; background:{% block button_background %}linear-gradient(135deg, #0b66f5 0%, #12d4ff 100%){% endblock %}; color:{% block button_text_color %}#ffffff{% endblock %}; text-decoration:none; font-weight:700; letter-spacing:0.2px; box-shadow:{% block button_shadow %}0 10px 30px rgba(11,102,245,0.25){% endblock %}; }
+  </style>
+</head>
+<body style="word-spacing:normal; background:{% block body_background %}#f4f7fb{% endblock %}; color:{% block base_text_color %}#0f172a{% endblock %};">
+  <div style="padding:32px 12px; background:{% block frame_background %}#f4f7fb{% endblock %};">
+    <div style="max-width:720px; margin:0 auto;">
+      <div class="card">
+        <div class="brand">
+          <div class="logo">
+            <img src="cid:logo-dark.png" alt="Logo" style="height:38px;display:block;max-width:180px;">
+          </div>
+          <div class="h1">{% block h1_title %}{% trans "H1 title" %}{% endblock %}</div>
+        </div>
+        <div class="body">
+          {% block content %}{% endblock %}
+        </div>
+        <div class="footer">
+          <div class="divider"></div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td valign="top" align="left" style="width:70%; padding-right:12px;">
+                <div style="margin-bottom:4px;">{% block footer_txt_1 %}{% trans "Need help?" %}{% endblock %}</div>
+                <div style="margin-bottom:8px;">{% block footer_txt_2 %}{% trans "You can reply to this email." %}{% endblock %}</div>
+                <div>
+                  {% block footer_unsuscribe %}<a href="#">{% trans "Unsubscribe" %}</a>{% endblock %}
+                  &nbsp;|&nbsp;
+                  {% block footer_product_name %}<a href="https://whatsynaptic.com/en/">Whatsynaptic</a>{% endblock %}
+                </div>
+              </td>
+              <td valign="middle" align="right" style="width:30%; padding-left:12px;">
+                <img src="cid:logo-black.gif" alt="Logo" style="max-width:120px; height:auto; display:block; margin-left:auto;">
+              </td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

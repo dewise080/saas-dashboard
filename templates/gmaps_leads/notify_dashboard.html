@@ -1,0 +1,190 @@
+{% extends 'layouts/base.html' %}
+{% load static %}
+{% block title %}Campaign Review{% endblock title %}
+
+{% block content %}
+<div class="row mb-3">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body d-flex justify-content-between align-items-center">
+        <div>
+          <h4 class="mb-1">Campaign Recipient Review</h4>
+          <p class="mb-0 text-muted">Review and send one-by-one. This is not bulk blast.</p>
+        </div>
+        <form class="d-flex align-items-center" method="get" action="">
+          <div class="me-2">
+            <label class="form-label small mb-1">Email campaign</label>
+            <select class="form-select" name="email_campaign" onchange="this.form.submit()">
+              {% for c in email_campaigns %}
+              <option value="{{ c.id }}" {% if c.id == selected_email_campaign %}selected{% endif %}>{{ c.name }} ({{ c.status }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="me-2">
+            <label class="form-label small mb-1">WhatsApp campaign</label>
+            <select class="form-select" name="wa_campaign" onchange="this.form.submit()">
+              {% for c in wa_campaigns %}
+              <option value="{{ c.id }}" {% if c.id == selected_wa_campaign %}selected{% endif %}>{{ c.name }} ({{ c.status }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="me-2">
+            <label class="form-label small mb-1">Limit</label>
+            <input type="number" class="form-control" name="limit" value="{{ limit }}" min="10" max="500" />
+          </div>
+          <button class="btn btn-outline-primary mt-4" type="submit">Load</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <h5 class="mb-0">Email recipients</h5>
+        <small class="text-muted">Ready/rendered/pending only. Send individually after reviewing content.</small>
+      </div>
+            <div class="card-body" style="max-height:70vh; overflow:auto;">
+        {% if email_recipients %}
+          {% for r in email_recipients %}
+          <div class="border rounded p-3 mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <div>
+                <div class="fw-bold">{% if r.email_address %}{{ r.email_address.email }}{% else %}(no email){% endif %} {% if r.recipient %}- {{ r.recipient.full_name }}{% endif %}</div>
+                <small class="text-muted">ID {{ r.id }} · Status {{ r.status }} · Campaign #{{ r.campaign_id }}</small>
+              </div>
+              <button class="btn btn-sm btn-primary" data-email-send data-id="{{ r.id }}">Send</button>
+            </div>
+            <div class="mb-2"><strong>Subject:</strong> {{ r.subject|default:'(none)' }}</div>
+            <div class="bg-light p-2 rounded" style="white-space:pre-wrap;">{{ r.body_html|default:r.body_text|default:'(no content)' }}</div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="text-muted">No recipients loaded.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <h5 class="mb-0">WhatsApp recipients</h5>
+        <small class="text-muted">Pending only. Send individually after reviewing content.</small>
+      </div>
+      <div class="card-body" style="max-height:70vh; overflow:auto;">
+        {% if wa_recipients %}
+          {% for r in wa_recipients %}
+          <div class="border rounded p-3 mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <div>
+                <div class="fw-bold">Lead #{{ r.lead_id }} {% if r.whatsapp_contact %}- {{ r.whatsapp_contact.chat_id }}{% endif %}</div>
+                <small class="text-muted">ID {{ r.id }} · Status {{ r.status }} · Campaign #{{ r.campaign_id }}</small>
+              </div>
+              <button class="btn btn-sm btn-success" data-wa-send data-id="{{ r.id }}">Send</button>
+            </div>
+            {% if r.media_url %}<div class="mb-2 text-info">Media: {{ r.media_url }}</div>{% endif %}
+            <div class="bg-light p-2 rounded" style="white-space:pre-wrap;">{{ r.rendered_text }}</div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="text-muted">No recipients loaded.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row mt-3">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header"><h6 class="mb-0">Log</h6></div>
+      <div class="card-body">
+        <pre id="notify-log" class="mb-0" style="min-height:140px; background:#0b1727; color:#d1e4ff; padding:12px; border-radius:8px;">Ready.</pre>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %}
+
+{% block extrascript %}
+<script>
+(function() {
+  const logEl = document.getElementById('notify-log');
+  const csrftoken = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value;
+  const emailButtons = document.querySelectorAll('[data-email-send]');
+  const waButtons = document.querySelectorAll('[data-wa-send]');
+  const log = (msg) => {
+    const ts = new Date().toLocaleTimeString();
+    logEl.textContent = `[${ts}] ${msg}\n` + logEl.textContent;
+  };
+
+  emailButtons.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-id');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      try {
+        const res = await fetch(`/api/gmaps-leads/notify/email/recipient/${id}/send/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrftoken,
+          },
+          body: '{}'
+        });
+        const data = await res.json();
+        if (res.ok) {
+          log(`Email recipient #${id} sent (${data.email || ''}).`);
+          btn.classList.remove('btn-primary');
+          btn.classList.add('btn-outline-secondary');
+          btn.textContent = 'Sent';
+        } else {
+          log(`Email recipient #${id} failed: ${data.error || res.status}`);
+          btn.disabled = false;
+          btn.textContent = 'Send';
+        }
+      } catch (err) {
+        log(`Email recipient #${id} error: ${err}`);
+        btn.disabled = false;
+        btn.textContent = 'Send';
+      }
+    });
+  });
+
+  waButtons.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-id');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      try {
+        const res = await fetch(`/api/gmaps-leads/notify/whatsapp/recipient/${id}/send/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrftoken,
+          },
+          body: '{}'
+        });
+        const data = await res.json();
+        if (res.ok) {
+          log(`WhatsApp recipient #${id} sent (${data.chat_id || ''}).`);
+          btn.classList.remove('btn-success');
+          btn.classList.add('btn-outline-secondary');
+          btn.textContent = 'Sent';
+        } else {
+          log(`WhatsApp recipient #${id} failed: ${data.error || res.status}`);
+          btn.disabled = false;
+          btn.textContent = 'Send';
+        }
+      } catch (err) {
+        log(`WhatsApp recipient #${id} error: ${err}`);
+        btn.disabled = false;
+        btn.textContent = 'Send';
+      }
+    });
+  });
+})();
+</script>
+{% endblock extrascript %}

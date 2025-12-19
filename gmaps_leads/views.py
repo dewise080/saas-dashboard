@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
 import csv
+import json
 import logging
 import random
 import time
@@ -61,6 +62,13 @@ from .waha_client import WahaClient, WahaClientError
 from .waha_test_messages import run_test_message
 from .models import AIMemory
 from .serializers import AIMemorySerializer
+from magic_notifier.services import create_notification
+from magic_notifier.recipients import get_email, get_phone
+from magic_notifier.emailer import Emailer
+from magic_notifier.whatsapper import Whatsapper
+from apps.emailing.models import EmailCampaign, CampaignRecipient
+from django.template.loader import render_to_string
+import re
 
 
 # Simple API for AI Assistant Memory
@@ -447,6 +455,116 @@ def export_leads_csv(request):
         ])
     
     return response
+
+
+@login_required
+def notify_email_dashboard(request):
+    """Email campaign recipient review/send."""
+    limit = min(int(request.GET.get("limit", 200) or 200), 500)
+    email_campaign_id = request.GET.get("email_campaign")
+    email_theme = request.GET.get("email_theme", "dark")
+
+    email_campaigns = EmailCampaign.objects.all().only("id", "name", "status").order_by("-created_at")[:20]
+    if not email_campaign_id and email_campaigns:
+        email_campaign_id = email_campaigns[0].id
+
+    email_recipients = []
+    if email_campaign_id:
+        email_recipients = (
+            CampaignRecipient.objects.select_related("campaign", "email_address", "recipient")
+            .filter(
+                campaign_id=email_campaign_id,
+                status__in=[
+                    CampaignRecipient.STATUS_READY,
+                    CampaignRecipient.STATUS_RENDERED,
+                    CampaignRecipient.STATUS_PENDING,
+                ],
+            )
+            .order_by("id")[:limit]
+        )
+
+    return render(
+        request,
+        "gmaps_leads/notify_email_dashboard.html",
+        {
+            "email_campaigns": email_campaigns,
+            "email_recipients": email_recipients,
+            "selected_email_campaign": int(email_campaign_id) if email_campaign_id else None,
+            "limit": limit,
+            "email_theme": email_theme,
+        },
+    )
+
+
+@login_required
+def notify_email_preview(request, recipient_id: int):
+    """Render the styled email for a single campaign recipient."""
+    recipient = get_object_or_404(
+        CampaignRecipient.objects.select_related("campaign", "email_address", "recipient"),
+        pk=recipient_id,
+    )
+    def extract_whatsapp_links(text: str):
+        """Return unique wa.me links in order, ignoring regex errors."""
+        if not text:
+            return []
+        try:
+            pattern = re.compile(r"https?://wa\\.me/[\\w/?=&%+\\.\\-]+", re.IGNORECASE)
+            seen = set()
+            links = []
+            for match in pattern.findall(text):
+                if match not in seen:
+                    seen.add(match)
+                    links.append(match)
+            return links
+        except re.error:
+            return []
+
+    theme = request.GET.get("theme", "dark")
+    email_base_template = "base_notifier/email_dark.html" if theme == "dark" else "base_notifier/email.html"
+    whatsapp_links = extract_whatsapp_links(recipient.body_html or recipient.body_text or "")
+    context = {
+        "recipient_obj": recipient.recipient,
+        "email_address": recipient.email_address.email if recipient.email_address else "",
+        "subject": recipient.subject or (recipient.campaign.name if recipient.campaign else ""),
+        "body_html": recipient.body_html or "",
+        "body_text": recipient.body_text or "",
+        "product_name": getattr(recipient.campaign, "name", ""),
+        "email_base_template": email_base_template,
+        "email_theme": theme,
+        "whatsapp_links": whatsapp_links,
+    }
+    html = render_to_string("notifier/campaign/email.html", context)
+    return HttpResponse(html)
+
+
+@login_required
+def notify_whatsapp_dashboard(request):
+    """WhatsApp campaign recipient review/send."""
+    limit = min(int(request.GET.get("limit", 200) or 200), 500)
+    wa_campaign_id = request.GET.get("wa_campaign")
+
+    wa_campaigns = WhatsAppCampaign.objects.all().only("id", "name", "status").order_by("-created_at")[:20]
+    if not wa_campaign_id and wa_campaigns:
+        wa_campaign_id = wa_campaigns[0].id
+
+    wa_recipients = []
+    if wa_campaign_id:
+        wa_recipients = (
+            WhatsAppCampaignRecipient.objects.select_related("campaign", "lead", "whatsapp_contact")
+            .filter(campaign_id=wa_campaign_id, status="pending")
+            .order_by("id")[:limit]
+        )
+
+    return render(
+        request,
+        "gmaps_leads/notify_whatsapp_dashboard.html",
+        {
+            "wa_campaigns": wa_campaigns,
+            "wa_recipients": wa_recipients,
+            "selected_wa_campaign": int(wa_campaign_id) if wa_campaign_id else None,
+            "limit": limit,
+        },
+    )
 
 
 # =============================================================================
@@ -1120,14 +1238,17 @@ class WahaContactSyncAPIView(APIView):
         job_id = data.get("job_id")
         dry_run = data.get("dry_run", True)
         skip_synced = data.get("skip_synced", True)
-        skip_synced = data.get("skip_synced", True)
         force_refresh = data.get("force_refresh", False)
 
         leads_qs = GmapsLead.objects.filter(phone__isnull=False).exclude(phone="").select_related("job")
         if job_id:
             leads_qs = leads_qs.filter(job_id=job_id)
+        if skip_synced and not force_refresh:
+            leads_qs = leads_qs.filter(
+                Q(whatsapp_contact__isnull=True) | Q(whatsapp_contact__synced_to_waha=False)
+            )
 
-        prepared = []
+        prepared_entries = []
         created_contacts = 0
         reused_contacts = 0
         errors = []
@@ -1137,7 +1258,7 @@ class WahaContactSyncAPIView(APIView):
             if lead.phone_type != "whatsapp":
                 continue
             scanned += 1
-            if len(prepared) >= limit:
+            if len(prepared_entries) >= limit:
                 break
 
             try:
@@ -1156,14 +1277,15 @@ class WahaContactSyncAPIView(APIView):
                 else:
                     reused_contacts += 1
 
-                prepared.append({
+                payload = {
                     "name": contact.business_name or lead.title,
                     "phone": contact.phone_number,
                     "chatId": contact.chat_id,
                     "jid": contact.jid,
                     "category": contact.category or lead.category,
                     "lead_id": lead.id,
-                })
+                }
+                prepared_entries.append({"contact": contact, "payload": payload})
             except Exception as exc:
                 errors.append({"lead_id": lead.id, "error": str(exc)})
                 continue
@@ -1173,14 +1295,14 @@ class WahaContactSyncAPIView(APIView):
             "job_id": job_id,
             "limit": limit,
             "scanned": scanned,
-            "prepared": len(prepared),
+            "prepared": len(prepared_entries),
             "created_contacts": created_contacts,
             "reused_contacts": reused_contacts,
             "errors": errors,
-            "payload_preview": prepared[: min(5, len(prepared))],
+            "payload_preview": [entry["payload"] for entry in prepared_entries[: min(5, len(prepared_entries))]],
         }
 
-        if dry_run or not prepared:
+        if dry_run or not prepared_entries:
             status_code = status.HTTP_200_OK if not errors else status.HTTP_206_PARTIAL_CONTENT
             summary["message"] = "Dry run - no call made to WAHA." if dry_run else "No contacts prepared."
             return Response(summary, status=status_code)
@@ -1194,8 +1316,49 @@ class WahaContactSyncAPIView(APIView):
             summary["waha"] = {"success": False, "configured": True, "error": str(exc)}
             return Response(summary, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        waha_result = client.sync_contacts(prepared)
+        payloads = [entry["payload"] for entry in prepared_entries]
+        waha_result = client.sync_contacts(payloads)
         summary["waha"] = waha_result
+        failure_chat_ids = {f.get("chatId") for f in waha_result.get("failures", []) if f.get("chatId")}
+        attempts_map = waha_result.get("attempts") or {}
+        conflict_synced = 0
+
+        def _contains_conflict(value):
+            if value is None:
+                return False
+            try:
+                if isinstance(value, (dict, list)):
+                    text = json.dumps(value)
+                else:
+                    text = str(value)
+            except Exception:
+                text = str(value)
+            return "conflict" in text.lower()
+
+        now = timezone.now()
+        for entry in prepared_entries:
+            contact = entry["contact"]
+            chat_id = entry["payload"].get("chatId")
+            if not contact or not chat_id:
+                continue
+            contact.waha_sync_attempts = (contact.waha_sync_attempts or 0) + 1
+            attempts = attempts_map.get(chat_id, [])
+            conflict_error = any(
+                _contains_conflict(attempt.get("payload")) or _contains_conflict(attempt.get("error"))
+                for attempt in attempts
+            )
+            if chat_id in failure_chat_ids and conflict_error:
+                failure_chat_ids.discard(chat_id)
+                conflict_synced += 1
+
+            if chat_id in failure_chat_ids:
+                contact.synced_to_waha = False
+                contact.save(update_fields=["synced_to_waha", "waha_sync_attempts", "updated_at"])
+            else:
+                contact.synced_to_waha = True
+                contact.waha_synced_at = now
+                contact.save(update_fields=["synced_to_waha", "waha_synced_at", "waha_sync_attempts", "updated_at"])
+        summary["conflict_marked_synced"] = conflict_synced
         http_status = status.HTTP_200_OK if waha_result.get("success") else status.HTTP_502_BAD_GATEWAY
         return Response(summary, status=http_status)
 
@@ -1401,6 +1564,7 @@ class WhatsAppCampaignRunAPIView(APIView):
 
     permission_classes = [AllowAny]
     serializer_class = WhatsAppCampaignSerializer
+    @extend_schema(deprecated=True)
 
     @extend_schema(
         summary="Run WhatsApp campaign",
@@ -1504,6 +1668,7 @@ class WhatsAppCampaignPrepareAPIView(APIView):
     """Generate recipients for a campaign without sending."""
 
     permission_classes = [AllowAny]
+    @extend_schema(deprecated=True)
 
     @extend_schema(
         summary="Prepare WhatsApp campaign recipients",
@@ -1528,6 +1693,7 @@ class WhatsAppCampaignRecipientsAPIView(APIView):
     """List recipients for a campaign."""
 
     permission_classes = [AllowAny]
+    @extend_schema(deprecated=True)
 
     @extend_schema(
         summary="List WhatsApp campaign recipients",
@@ -1584,6 +1750,23 @@ def _emails_from_lead(lead: GmapsLead) -> list[str]:
             uniq.append(e)
             seen.add(e)
     return uniq
+
+
+def _first_phone_from_lead(lead: GmapsLead) -> str | None:
+    # Try explicit phone fields
+    for attr in ["phone", "phone_number", "whatsapp_number", "whatsapp"]:
+        val = getattr(lead, attr, None)
+        if val:
+            return val
+    # Try serialized phones on lead
+    try:
+        if getattr(lead, "phones", None):
+            parsed = json.loads(lead.phones) if isinstance(lead.phones, str) else lead.phones
+            if isinstance(parsed, list) and parsed:
+                return parsed[0]
+    except Exception:
+        pass
+    return None
 
 
 class ChatwootContactSyncAPIView(APIView):
@@ -1722,3 +1905,349 @@ class ChatwootContactSyncAPIView(APIView):
                 summary["failed"] += 1
 
         return Response(summary, status=status.HTTP_200_OK if summary["failed"] == 0 else status.HTTP_206_PARTIAL_CONTENT)
+
+
+# =============================================================================
+# Magic Notifier bulk sends (email + WhatsApp) - preferred paths
+# =============================================================================
+
+
+class EmailBlastAPIView(APIView):
+    """Send simple emails to selected leads via magic_notifier."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Send emails to leads (magic_notifier)",
+        description="Simple bulk sender: provide lead_ids, subject/body, optional throttle and jitter.",
+        responses={200: OpenApiTypes.OBJECT, 400: OpenApiTypes.OBJECT},
+    )
+    def post(self, request):
+        data = request.data or {}
+        lead_ids = data.get("lead_ids") or []
+        subject = data.get("subject")
+        body = data.get("body")
+        throttle = max(int(data.get("throttle_per_minute", 60) or 60), 1)
+        delay_min = max(int(data.get("delay_min_ms", 0) or 0), 0) / 1000.0
+        delay_max = max(int(data.get("delay_max_ms", delay_min * 1000) or delay_min * 1000), int(delay_min * 1000)) / 1000.0
+
+        if not subject or not body:
+            return Response({"error": "subject and body are required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            lead_ids = [int(i) for i in lead_ids]
+        except Exception:
+            return Response({"error": "lead_ids must be a list of ints"}, status=status.HTTP_400_BAD_REQUEST)
+
+        leads = list(GmapsLead.objects.filter(id__in=lead_ids))
+        prepared: list[tuple[GmapsLead, str]] = []
+        for lead in leads:
+            email = _emails_from_lead(lead)
+            if email:
+                prepared.append((lead, email[0]))
+
+        if not prepared:
+            return Response({"error": "No leads with email found."}, status=status.HTTP_400_BAD_REQUEST)
+
+        base_interval = 60.0 / float(throttle)
+        sent = 0
+        errors: list[dict] = []
+
+        for lead, email in prepared:
+            try:
+                em = Emailer(subject, [email], template=None, context={"lead": lead}, final_message=body)
+                em.send()
+                create_notification(
+                    recipient=lead,
+                    text=body,
+                    type="email",
+                    subject=subject,
+                    data={"email": email, "lead_id": lead.id},
+                )
+                sent += 1
+            except Exception as exc:  # noqa: BLE001
+                errors.append({"lead_id": lead.id, "email": email, "error": str(exc)})
+            sleep_time = max(base_interval, random.uniform(delay_min, delay_max))
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+
+        return Response(
+            {
+                "requested": len(lead_ids),
+                "with_email": len(prepared),
+                "sent": sent,
+                "errors": errors[:10],
+                "throttle_per_minute": throttle,
+                "delay_ms": {"min": int(delay_min * 1000), "max": int(delay_max * 1000)},
+            },
+            status=status.HTTP_200_OK if not errors else status.HTTP_206_PARTIAL_CONTENT,
+        )
+
+
+class WhatsAppBlastAPIView(APIView):
+    """Send WhatsApp messages to leads via magic_notifier / WAHA client wrappers."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Send WhatsApp messages to leads (magic_notifier)",
+        description="Provide lead_ids, text/media, optional throttle/jitter. Uses WAHA client via magic_notifier.",
+        responses={200: OpenApiTypes.OBJECT, 400: OpenApiTypes.OBJECT},
+    )
+    def post(self, request):
+        data = request.data or {}
+        lead_ids = data.get("lead_ids") or []
+        text = data.get("text")
+        media_url = data.get("media_url")
+        throttle = max(int(data.get("throttle_per_minute", 30) or 30), 1)
+        delay_min = max(int(data.get("delay_min_ms", 0) or 0), 0) / 1000.0
+        delay_max = max(int(data.get("delay_max_ms", delay_min * 1000) or delay_min * 1000), int(delay_min * 1000)) / 1000.0
+
+        if not text:
+            return Response({"error": "text is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            lead_ids = [int(i) for i in lead_ids]
+        except Exception:
+            return Response({"error": "lead_ids must be a list of ints"}, status=status.HTTP_400_BAD_REQUEST)
+
+        leads = list(GmapsLead.objects.filter(id__in=lead_ids).select_related("whatsapp_contact"))
+        prepared: list[tuple[GmapsLead, str | None]] = []
+        for lead in leads:
+            chat_id = None
+            wa_contact = getattr(lead, "whatsapp_contact", None)
+            if wa_contact and getattr(wa_contact, "chat_id", None):
+                chat_id = wa_contact.chat_id
+            if not chat_id:
+                chat_id = _first_phone_from_lead(lead)
+            if chat_id:
+                prepared.append((lead, chat_id))
+
+        if not prepared:
+            return Response({"error": "No leads with WhatsApp/chat_id found."}, status=status.HTTP_400_BAD_REQUEST)
+
+        base_interval = 60.0 / float(throttle)
+        sent = 0
+        errors: list[dict] = []
+
+        try:
+            client = WahaClient()
+        except Exception as exc:  # noqa: BLE001
+            return Response({"error": "Failed to init WAHA client", "details": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        for lead, chat_id in prepared:
+            try:
+                payload_text = compose_whatsapp_text(text, media_url)
+                result = client.send_text(chat_id=chat_id, text=payload_text)
+                if result.get("success"):
+                    sent += 1
+                    create_notification(
+                        recipient=lead,
+                        text=text,
+                        type="whatsapp",
+                        data={"chat_id": chat_id, "lead_id": lead.id, "media_url": media_url},
+                    )
+                else:
+                    errors.append({"lead_id": lead.id, "chat_id": chat_id, "error": str(result)})
+            except Exception as exc:  # noqa: BLE001
+                errors.append({"lead_id": lead.id, "chat_id": chat_id, "error": str(exc)})
+            sleep_time = max(base_interval, random.uniform(delay_min, delay_max))
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+
+        return Response(
+            {
+                "requested": len(lead_ids),
+                "with_chat": len(prepared),
+                "sent": sent,
+                "errors": errors[:10],
+                "throttle_per_minute": throttle,
+                "delay_ms": {"min": int(delay_min * 1000), "max": int(delay_max * 1000)},
+            },
+            status=status.HTTP_200_OK if not errors else status.HTTP_206_PARTIAL_CONTENT,
+        )
+
+
+class EmailRecipientSendAPIView(APIView):
+    """Send a single campaign recipient after manual review."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Send single email campaign recipient (manual approve)",
+        request=OpenApiTypes.OBJECT,
+        responses={200: OpenApiTypes.OBJECT, 400: OpenApiTypes.OBJECT},
+    )
+    def post(self, request, recipient_id: int):
+        def extract_whatsapp_links(text: str):
+            """Return unique wa.me links in order."""
+            if not text:
+                return []
+            try:
+                pattern = re.compile(r"https?://wa\\.me/[\\w/?=&%+\\.\\-]+", re.IGNORECASE)
+                seen = set()
+                links = []
+                for match in pattern.findall(text):
+                    if match not in seen:
+                        seen.add(match)
+                        links.append(match)
+                return links
+            except re.error:
+                return []
+
+        recipient = get_object_or_404(
+            CampaignRecipient.objects.select_related("campaign", "email_address", "recipient"),
+            pk=recipient_id,
+        )
+        email_address = getattr(recipient, "email_address", None)
+        if not email_address or not email_address.email:
+            return Response({"error": "No email address for recipient"}, status=status.HTTP_400_BAD_REQUEST)
+
+        subject = recipient.subject or (recipient.campaign.name if recipient.campaign else "")
+        tpl_html = tpl_text = ""
+        tpl = recipient.campaign.template if recipient.campaign else None
+        if tpl:
+            tpl_html = tpl.html_template or ""
+            tpl_text = tpl.text_template or ""
+
+        body_html = recipient.body_html or tpl_html
+        body_text = recipient.body_text or tpl_text
+        body = body_html or body_text
+        if not body:
+            return Response({"error": "No body content to send"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            email_theme = request.data.get("email_theme") or request.GET.get("email_theme") or "dark"
+            email_base_template = "base_notifier/email_dark.html" if email_theme == "dark" else "base_notifier/email.html"
+            whatsapp_links = extract_whatsapp_links(body)
+            context = {
+                "recipient_obj": recipient.recipient,
+                "email_address": email_address.email,
+                "subject": subject,
+                "body_html": body_html,
+                "body_text": body_text,
+                "email_base_template": email_base_template,
+                "email_theme": email_theme,
+                "whatsapp_links": whatsapp_links,
+            }
+            rendered_html = render_to_string("notifier/campaign/email.html", context)
+            # Use inline-rendered HTML to avoid MJML/template resolution issues at send time.
+            em = Emailer(subject, [email_address.email], template=None, context={}, final_message=rendered_html)
+            em.send()
+            recipient.status = CampaignRecipient.STATUS_SENT
+            recipient.attempted_at = timezone.now()
+            recipient.sent_at = timezone.now()
+            recipient.last_error = ""
+            recipient.save(update_fields=["status", "attempted_at", "sent_at", "last_error", "updated_at"])
+            create_notification(
+                recipient=email_address.recipient or recipient,
+                text=body,
+                type="email",
+                subject=subject,
+                data={"campaign_id": recipient.campaign_id, "email": email_address.email, "recipient_id": recipient.id},
+            )
+            return Response({"sent": True, "recipient_id": recipient.id, "email": email_address.email})
+        except Exception as exc:  # noqa: BLE001
+            recipient.status = CampaignRecipient.STATUS_FAILED
+            recipient.attempted_at = timezone.now()
+            recipient.last_error = str(exc)
+            recipient.save(update_fields=["status", "attempted_at", "last_error", "updated_at"])
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EmailRecipientUpdateAPIView(APIView):
+    """Update subject/body for a single campaign recipient (manual edit)."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Update email campaign recipient content",
+        request=OpenApiTypes.OBJECT,
+        responses={200: OpenApiTypes.OBJECT, 400: OpenApiTypes.OBJECT},
+    )
+    def post(self, request, recipient_id: int):
+        recipient = get_object_or_404(
+            CampaignRecipient.objects.select_related("campaign", "email_address", "recipient"),
+            pk=recipient_id,
+        )
+        data = request.data or {}
+        subject = data.get("subject", recipient.subject)
+        body_html = data.get("body_html", recipient.body_html)
+        body_text = data.get("body_text", recipient.body_text)
+
+        recipient.subject = subject or ""
+        recipient.body_html = body_html or ""
+        recipient.body_text = body_text or ""
+        # Keep status as-is unless explicitly provided; default to ready
+        status_override = data.get("status")
+        if status_override in dict(CampaignRecipient.STATUS_CHOICES):
+            recipient.status = status_override
+        elif recipient.status in [CampaignRecipient.STATUS_PENDING, CampaignRecipient.STATUS_RENDERED]:
+            recipient.status = CampaignRecipient.STATUS_READY
+        recipient.save(update_fields=["subject", "body_html", "body_text", "status", "updated_at"])
+        return Response(
+            {
+                "id": recipient.id,
+                "subject": recipient.subject,
+                "body_html": recipient.body_html,
+                "body_text": recipient.body_text,
+                "status": recipient.status,
+            }
+        )
+
+
+class WhatsAppRecipientSendAPIView(APIView):
+    """Send a single WhatsApp campaign recipient after manual review."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Send single WhatsApp campaign recipient (manual approve)",
+        request=OpenApiTypes.OBJECT,
+        responses={200: OpenApiTypes.OBJECT, 400: OpenApiTypes.OBJECT},
+    )
+    def post(self, request, recipient_id: int):
+        recipient = get_object_or_404(
+            WhatsAppCampaignRecipient.objects.select_related("campaign", "lead", "whatsapp_contact"),
+            pk=recipient_id,
+        )
+        wa_contact = getattr(recipient, "whatsapp_contact", None)
+        chat_id = getattr(wa_contact, "chat_id", None) or _first_phone_from_lead(recipient.lead)
+        if not chat_id:
+            return Response({"error": "No chat_id/phone for recipient"}, status=status.HTTP_400_BAD_REQUEST)
+
+        text = recipient.rendered_text
+        media_url = recipient.media_url
+        if not text:
+            return Response({"error": "No message content to send"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            client = WahaClient()
+        except Exception as exc:  # noqa: BLE001
+            return Response({"error": "Failed to init WAHA client", "details": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            payload_text = compose_whatsapp_text(text, media_url)
+            result = client.send_text(chat_id=chat_id, text=payload_text)
+            recipient.attempts += 1
+            if result.get("success"):
+                recipient.status = "sent"
+                recipient.message_id = result.get("response", {}).get("id")
+                recipient.error = None
+                recipient.sent_at = timezone.now()
+                recipient.save(update_fields=["status", "message_id", "error", "sent_at", "attempts", "updated_at"])
+                create_notification(
+                    recipient=recipient.lead,
+                    text=text,
+                    type="whatsapp",
+                    data={"campaign_id": recipient.campaign_id, "lead_id": recipient.lead_id, "chat_id": chat_id},
+                )
+                return Response({"sent": True, "recipient_id": recipient.id, "chat_id": chat_id})
+            recipient.status = "failed"
+            recipient.error = str(result)
+            recipient.save(update_fields=["status", "error", "attempts", "updated_at"])
+            return Response({"error": str(result)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:  # noqa: BLE001
+            recipient.status = "failed"
+            recipient.error = str(exc)
+            recipient.attempts += 1
+            recipient.save(update_fields=["status", "error", "attempts", "updated_at"])
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)

@@ -5,7 +5,7 @@
     <div class="m-header">
       <a href="{% url "apps.pages:index" %}" class="b-brand text-primary">
         <!-- ========   Change your logo from here   ============ -->
-        <img src="{% static 'assets/images/logo-white.svg' %}" class="img-fluid" alt="logo">
+        <img src="{% static 'assets/images/logo-dark.png' %}" class="img-fluid" alt="logo">
       </a>
     </div>
     <div class="navbar-content">
@@ -59,6 +59,29 @@
           </a>
         </li>
         {% endif %}
+
+        <li class="pc-item pc-caption">
+          <label>Outreach</label>
+          <i data-feather="send"></i>
+        </li>
+        <li class="pc-item">
+          <a href="{% url 'gmaps_leads:notify_email_dashboard' %}" class="pc-link">
+            <span class="pc-micon"><i data-feather="mail"></i></span>
+            <span class="pc-mtext">Email Review</span>
+          </a>
+        </li>
+        <li class="pc-item">
+          <a href="{% url 'gmaps_leads:notify_whatsapp_dashboard' %}" class="pc-link">
+            <span class="pc-micon"><i data-feather="message-circle"></i></span>
+            <span class="pc-mtext">WhatsApp Review</span>
+          </a>
+        </li>
+        <li class="pc-item">
+          <a href="{% url 'gmaps_leads:leads_list' %}" class="pc-link">
+            <span class="pc-micon"><i data-feather="list"></i></span>
+            <span class="pc-mtext">Leads</span>
+          </a>
+        </li>
 
         <li class="pc-item pc-caption">
           <label>WhatsApp</label>

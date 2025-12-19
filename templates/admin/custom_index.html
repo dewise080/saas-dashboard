@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --admin-logo-url: url('/static/assets/images/logo-dark.svg'); /* set to url('/static/assets/images/logo-dark.svg') to override */
+  --admin-logo-url: url('/static/assets/images/logo-dark.png'); /* set to url('/static/assets/images/logo-dark.png') to override */
 }
 body,
 .content-wrapper,
@@ -154,6 +154,30 @@ body,
   .app-card a:hover {
     text-decoration: underline;
   }
+  .pie-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px;
+    margin-top: 16px;
+  }
+  .pie-card {
+    background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 12px;
+    color: #e2ecff;
+    box-shadow: 0 10px 26px rgba(0,0,0,0.3);
+    min-height: 220px;
+  }
+  .pie-card h4 {
+    margin: 0 0 10px;
+    font-size: 15px;
+    letter-spacing: 0.01em;
+  }
+  .pie-card canvas {
+    width: 100% !important;
+    height: 180px !important;
+  }
 </style>
 {% endblock %}
 
@@ -179,6 +203,14 @@ body,
       <div class="kpi-label">Workflow Executions</div>
       <div class="kpi-value">{{ dashboard.kpis.executions|default_if_none:"—" }}</div>
     </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Notifier Sent</div>
+      <div class="kpi-value">{{ dashboard.kpis.notifier_sent|default_if_none:"—" }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Notifier Failed</div>
+      <div class="kpi-value">{{ dashboard.kpis.notifier_failed|default_if_none:"—" }}</div>
+    </div>
   </div>
 
   <div class="chart-grid">
@@ -194,11 +226,34 @@ body,
       <h3>Email Sends • last 30 days</h3>
       <canvas id="emailsChart" height="150"></canvas>
     </div>
+    <div class="chart-card">
+      <h3>Notifier Events • last 30 days</h3>
+      <canvas id="notifierChart" height="150"></canvas>
+    </div>
+  </div>
+
+  <div class="pie-grid">
+    <div class="pie-card">
+      <h4>Phones (WhatsApp vs others)</h4>
+      <canvas id="phonePie" height="180"></canvas>
+    </div>
+    <div class="pie-card">
+      <h4>Websites present</h4>
+      <canvas id="websitePie" height="180"></canvas>
+    </div>
+    <div class="pie-card">
+      <h4>Emails present</h4>
+      <canvas id="emailPie" height="180"></canvas>
+    </div>
   </div>
 
   {{ dashboard.charts.leads_30d|default_if_none:"[]"|json_script:"leads30d" }}
   {{ dashboard.charts.jobs_30d|default_if_none:"[]"|json_script:"jobs30d" }}
   {{ dashboard.charts.email_sends_30d|default_if_none:"[]"|json_script:"emails30d" }}
+  {{ dashboard.charts.notifier_30d|default_if_none:"[]"|json_script:"notifier30d" }}
+  {{ dashboard.charts.lead_phone_breakdown|default_if_none:"{}"|json_script:"leadPhoneBreakdown" }}
+  {{ dashboard.charts.lead_website_breakdown|default_if_none:"{}"|json_script:"leadWebsiteBreakdown" }}
+  {{ dashboard.charts.lead_email_breakdown|default_if_none:"{}"|json_script:"leadEmailBreakdown" }}
 
   {% if dashboard.apps %}
   <div class="apps-section">
@@ -234,6 +289,7 @@ body,
       { canvas: "leadsChart", dataId: "leads30d", label: "Leads", color: "#22d3ee" },
       { canvas: "jobsChart", dataId: "jobs30d", label: "Scrape Jobs", color: "#a78bfa" },
       { canvas: "emailsChart", dataId: "emails30d", label: "Email Sends", color: "#34d399" },
+      { canvas: "notifierChart", dataId: "notifier30d", label: "Notifier", color: "#f59e0b" },
     ];
 
     function parseData(id) {
@@ -301,6 +357,62 @@ body,
       const data = parseData(set.dataId);
       buildChart(set.canvas, data, set.label, set.color);
     });
+
+    function buildPie(target, data, labels, colors) {
+      const el = document.getElementById(target);
+      if (!el || !el.getContext) return;
+      const ctx = el.getContext("2d");
+      new Chart(ctx, {
+        type: "doughnut",
+        data: {
+          labels,
+          datasets: [{
+            data,
+            backgroundColor: colors,
+            borderWidth: 0,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: "bottom", labels: { color: "#c9d8f3" } },
+            tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed}` } }
+          }
+        }
+      });
+    }
+
+    // Phone pie
+    const phoneBreakdown = parseData("leadPhoneBreakdown");
+    if (phoneBreakdown && phoneBreakdown.total) {
+      buildPie(
+        "phonePie",
+        [phoneBreakdown.whatsapp || 0, phoneBreakdown.local || 0, phoneBreakdown.other || 0, phoneBreakdown.none || 0],
+        ["WhatsApp", "Local", "Other", "None"],
+        ["#10b981", "#3b82f6", "#f59e0b", "#94a3b8"]
+      );
+    }
+    // Website pie
+    const websiteBreakdown = parseData("leadWebsiteBreakdown");
+    if (websiteBreakdown && websiteBreakdown.total) {
+      buildPie(
+        "websitePie",
+        [websiteBreakdown.with || 0, websiteBreakdown.without || 0],
+        ["With website", "No website"],
+        ["#22d3ee", "#1f2937"]
+      );
+    }
+    // Email pie
+    const emailBreakdown = parseData("leadEmailBreakdown");
+    if (emailBreakdown && emailBreakdown.total) {
+      buildPie(
+        "emailPie",
+        [emailBreakdown.with || 0, emailBreakdown.without || 0],
+        ["With email", "No email"],
+        ["#34d399", "#1f2937"]
+      );
+    }
 
     const toggle = document.querySelector(".admin-modules-toggle");
     const target = document.getElementById(toggle?.dataset.target || "admin-modules");

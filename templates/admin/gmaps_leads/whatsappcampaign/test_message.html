@@ -1,118 +1,249 @@
 {% extends "admin/base_site.html" %}
 {% load i18n admin_urls %}
 
+{% block extrastyle %}
+  {{ block.super }}
+  <style>
+    .whatsapp-test-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+    .whatsapp-card {
+      border-radius: 14px;
+      border: none;
+      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+    }
+    .preview-box {
+      background: #0f172a;
+      color: #f8fafc;
+      border-radius: 10px;
+      padding: 16px;
+      white-space: pre-wrap;
+      min-height: 160px;
+    }
+    .form-section h5 {
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #94a3b8;
+      margin-bottom: 0.4rem;
+    }
+    .alert {
+      border-radius: 10px;
+      padding: 12px 16px;
+    }
+  </style>
+{% endblock %}
+
 {% block content %}
   <div id="content-main">
-    <h1>{{ title }}</h1>
-    <p>
-      Campaign: <strong>{{ campaign.name }}</strong> (Job #{{ campaign.job_id }})
-      &nbsp;—&nbsp;
-      <a href="{% url 'admin:gmaps_leads_whatsappcampaign_change' campaign.pk|admin_urlquote %}">Back to campaign</a>
-    </p>
+    <div class="d-flex justify-content-between flex-wrap align-items-center mb-3">
+      <div>
+        <h1 class="mb-1">{{ title }}</h1>
+        <p class="text-muted mb-0">
+          Campaign: <strong>{{ campaign.name }}</strong> (Job #{{ campaign.job_id }})
+        </p>
+      </div>
+      <a class="btn btn-link" href="{% url 'admin:gmaps_leads_whatsappcampaign_change' campaign.pk|admin_urlquote %}">&larr; Back to campaign</a>
+    </div>
 
-    <form method="post" novalidate>
+    {% if form_error %}
+      <div class="alert alert-danger">{{ form_error }}</div>
+    {% endif %}
+
+    {% if result %}
+      <div class="card whatsapp-card mb-4">
+        <div class="card-body">
+          <div class="d-flex justify-content-between flex-wrap">
+            <div>
+              <h4 class="card-title mb-1">
+                {% if result.dry_run %}Preview{% else %}WAHA response{% endif %}
+              </h4>
+              <p class="text-muted mb-0">
+                To: <strong>{{ result.chat_id }}</strong>
+                {% if result.phone %} · {{ result.phone }}{% endif %}
+              </p>
+            </div>
+            {% if not result.dry_run %}
+              <div class="text-end">
+                {% if result.waha.success %}
+                  <span class="badge bg-success">Sent</span>
+                {% else %}
+                  <span class="badge bg-danger">Failed</span>
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+          <div class="preview-box mt-3">
+            {{ result.rendered_text|default:"(empty)" }}
+          </div>
+          {% if result.media_url %}
+            <p class="mt-2 mb-0 small text-muted">Media URL: {{ result.media_url }}</p>
+          {% endif %}
+          {% if not result.dry_run %}
+            <pre class="mt-3 mb-0 small bg-light p-2 rounded">{{ result.waha }}</pre>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+    <form method="post" novalidate class="card whatsapp-card">
       {% csrf_token %}
+      <div class="card-body">
+        <div class="whatsapp-test-grid">
+          <div>
+            <div class="form-section mb-3">
+              <h5>Recipient</h5>
+              <div class="mb-2">
+                <label class="form-label">Phone</label>
+                <input type="text" class="form-control" name="phone" placeholder="+905XXXXXXXX"
+                       value="{{ form_values.phone|default_if_none:'' }}">
+                <small class="text-muted">Preferred input. Automatically formats chatId.</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">JID</label>
+                <input type="text" class="form-control" name="jid" placeholder="905XXXXXXXX@s.whatsapp.net"
+                       value="{{ form_values.jid|default_if_none:'' }}">
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Chat ID</label>
+                <input type="text" class="form-control" name="chat_id" placeholder="905XXXXXXXX@c.us"
+                       value="{{ form_values.chat_id|default_if_none:'' }}">
+              </div>
+            </div>
 
-      <fieldset class="module aligned">
-        <h2>Recipient</h2>
-        <div class="form-row">
-          <label>phone</label>
-          <input type="text" name="phone" placeholder="+905XXXXXXXX" style="width: 320px;" />
-          <p class="help">Preferred: phone. Alternatively use jid or chat_id.</p>
-        </div>
-        <div class="form-row">
-          <label>jid</label>
-          <input type="text" name="jid" placeholder="905XXXXXXXX@s.whatsapp.net" style="width: 320px;" />
-        </div>
-        <div class="form-row">
-          <label>chat_id</label>
-          <input type="text" name="chat_id" placeholder="905XXXXXXXX@c.us" style="width: 320px;" />
-        </div>
-      </fieldset>
+            <div class="form-section mb-3">
+              <h5>Render Context</h5>
+              <div class="mb-2">
+                <label class="form-label">Lead ID</label>
+                <input type="number" class="form-control" name="lead_id" placeholder="123"
+                       value="{{ form_values.lead_id|default_if_none:'' }}">
+                <small class="text-muted">Pulls {% templatetag openvariable %}business_name{% templatetag closevariable %}, {% templatetag openvariable %}category{% templatetag closevariable %}, {% templatetag openvariable %}website{% templatetag closevariable %} automatically.</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Business name</label>
+                <input type="text" class="form-control" name="business_name"
+                       value="{{ form_values.business_name|default_if_none:'' }}">
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Category</label>
+                <input type="text" class="form-control" name="category"
+                       value="{{ form_values.category|default_if_none:'' }}">
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Website</label>
+                <input type="text" class="form-control" name="website"
+                       value="{{ form_values.website|default_if_none:'' }}">
+              </div>
+            </div>
+          </div>
 
-      <fieldset class="module aligned">
-        <h2>Content Source</h2>
-        <div class="form-row">
-          <label>source</label>
-          <select name="source" style="width: 320px;">
-            <option value="campaign" selected>Use this campaign (pool/fallback)</option>
-            <option value="pool">Use pool</option>
-            <option value="template">Use template</option>
-            <option value="text">Use raw text</option>
-          </select>
-        </div>
+          <div>
+            <div class="form-section mb-3">
+              <h5>Content source</h5>
+              {% with form_values.source|default:'campaign' as source_value %}
+                <div class="mb-2">
+                  <label class="form-label">Source</label>
+                  <select name="source" class="form-select" id="source-selector">
+                    <option value="campaign" {% if source_value == 'campaign' %}selected{% endif %}>Use this campaign (pool/fallback)</option>
+                    <option value="pool" {% if source_value == 'pool' %}selected{% endif %}>Pick a pool</option>
+                    <option value="template" {% if source_value == 'template' %}selected{% endif %}>Pick a template</option>
+                    <option value="text" {% if source_value == 'text' %}selected{% endif %}>Write ad-hoc text</option>
+                  </select>
+                </div>
 
-        <div class="form-row">
-          <label>pool</label>
-          <select name="pool_id" style="width: 320px;">
-            <option value="">--</option>
-            {% for p in pools %}
-              <option value="{{ p.id }}">{{ p.id }} - {{ p.name }}</option>
-            {% endfor %}
-          </select>
-        </div>
+                <div class="mb-2 source-field source-pool">
+                  <label class="form-label">Pool</label>
+                  <select name="pool_id" class="form-select">
+                    <option value="">--</option>
+                    {% for p in pools %}
+                      <option value="{{ p.id }}" {% if form_values.pool_id|default_if_none:'' == p.id|stringformat:"s" %}selected{% endif %}>
+                        {{ p.id }} · {{ p.name }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </div>
 
-        <div class="form-row">
-          <label>template</label>
-          <select name="template_id" style="width: 320px;">
-            <option value="">--</option>
-            {% for t in templates %}
-              <option value="{{ t.id }}">{{ t.id }} - {{ t.pool.name }}</option>
-            {% endfor %}
-          </select>
-        </div>
+                <div class="mb-2 source-field source-template">
+                  <label class="form-label">Template</label>
+                  <select name="template_id" class="form-select">
+                    <option value="">--</option>
+                    {% for t in templates %}
+                      <option value="{{ t.id }}" {% if form_values.template_id|default_if_none:'' == t.id|stringformat:"s" %}selected{% endif %}>
+                        {{ t.id }} · {{ t.pool.name }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </div>
 
-        <div class="form-row">
-          <label>text</label>
-          <textarea name="text" rows="4" style="width: 80%;" placeholder="Hi {{business_name}} ..."></textarea>
-        </div>
-      </fieldset>
+                <div class="mb-2 source-field source-text">
+                  <label class="form-label">Raw text</label>
+                  <textarea name="text" class="form-control" rows="5" placeholder="Hi {% templatetag openvariable %}business_name{% templatetag closevariable %}..."
+                            >{{ form_values.text|default_if_none:'' }}</textarea>
+                </div>
+              {% endwith %}
+            </div>
 
-      <fieldset class="module aligned">
-        <h2>Render Context (optional)</h2>
-        <div class="form-row">
-          <label>lead_id</label>
-          <input type="number" name="lead_id" placeholder="123" style="width: 160px;" />
-          <p class="help">If set, placeholders come from the lead.</p>
+            <div class="form-section">
+              <h5>Options</h5>
+              <div class="form-check form-switch">
+                {% with form_values.dry_run|stringformat:"s"|lower as dry_val %}
+                  <input class="form-check-input" type="checkbox" name="dry_run" id="dry-run-toggle"
+                         {% if dry_val != 'false' %}checked{% endif %}>
+                {% endwith %}
+                <label class="form-check-label" for="dry-run-toggle">Preview only (no send)</label>
+              </div>
+              <div class="form-check form-switch">
+                {% with form_values.link_preview|stringformat:"s"|lower as link_val %}
+                  <input class="form-check-input" type="checkbox" name="link_preview" id="link-preview"
+                         {% if link_val in 'ontrue1' %}checked{% endif %}>
+                {% endwith %}
+                <label class="form-check-label" for="link-preview">Enable link preview</label>
+              </div>
+              <div class="form-check form-switch">
+                {% with form_values.link_preview_high_quality|stringformat:"s"|lower as hq_val %}
+                  <input class="form-check-input" type="checkbox" name="link_preview_high_quality" id="link-preview-hq"
+                         {% if hq_val in 'ontrue1' %}checked{% endif %}>
+                {% endwith %}
+                <label class="form-check-label" for="link-preview-hq">HQ link preview</label>
+              </div>
+              <div class="mt-2">
+                <label class="form-label">Reply to</label>
+                <input type="text" class="form-control" name="reply_to" value="{{ form_values.reply_to|default_if_none:'' }}">
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="form-row">
-          <label>business_name</label>
-          <input type="text" name="business_name" style="width: 320px;" />
-        </div>
-        <div class="form-row">
-          <label>category</label>
-          <input type="text" name="category" style="width: 320px;" />
-        </div>
-        <div class="form-row">
-          <label>website</label>
-          <input type="text" name="website" style="width: 320px;" />
-        </div>
-      </fieldset>
+      </div>
 
-      <fieldset class="module aligned">
-        <h2>Options</h2>
-        <div class="form-row">
-          <label style="display: inline-block; margin-right: 12px;">
-            <input type="checkbox" name="dry_run" checked /> Preview only
-          </label>
-          <label style="display: inline-block; margin-right: 12px;">
-            <input type="checkbox" name="link_preview" /> Link preview
-          </label>
-          <label style="display: inline-block;">
-            <input type="checkbox" name="link_preview_high_quality" /> HQ preview
-          </label>
+      <div class="card-footer d-flex justify-content-between flex-wrap">
+        <div class="text-muted small">Placeholders: {% templatetag openvariable %}business_name{% templatetag closevariable %}, {% templatetag openvariable %}category{% templatetag closevariable %}, {% templatetag openvariable %}website{% templatetag closevariable %}.</div>
+        <div>
+          <button class="btn btn-outline-primary me-2" type="submit" name="submit_action" value="preview">Preview</button>
+          <button class="btn btn-primary" type="submit" name="submit_action" value="send">Send now</button>
         </div>
-        <div class="form-row">
-          <label>reply_to</label>
-          <input type="text" name="reply_to" style="width: 320px;" />
-        </div>
-      </fieldset>
-
-      <div class="submit-row">
-        <button class="button" type="submit" name="submit_action" value="preview">Preview</button>
-        <button class="button default" type="submit" name="submit_action" value="send">Send now</button>
       </div>
     </form>
   </div>
 {% endblock %}
 
+{% block footer %}
+  {{ block.super }}
+  <script>
+    (function() {
+      const selector = document.getElementById("source-selector");
+      const sections = document.querySelectorAll(".source-field");
+      function updateVisibility() {
+        const value = selector.value;
+        sections.forEach((section) => {
+          section.style.display = section.classList.contains("source-" + value) ? "block" : "none";
+        });
+      }
+      if (selector) {
+        selector.addEventListener("change", updateVisibility);
+        updateVisibility();
+      }
+    })();
+  </script>
+{% endblock %}

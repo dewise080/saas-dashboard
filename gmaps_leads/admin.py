@@ -7,7 +7,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.http import HttpResponseRedirect, JsonResponse
 from django.db import models
-from django.db.models import Q
+from django.db.models import Q, Count, Max
 from django import forms
 from django.contrib.admin.helpers import ActionForm
 from ckeditor.widgets import CKEditorWidget
@@ -28,7 +28,7 @@ from .models import (
     WhatsAppTemplate,
 )
 from .services import create_scrape_job, refresh_job_status, import_job_results, GmapsScraperService
-from .whatsapp_campaigns import prepare_campaign_recipients
+from .whatsapp_campaigns import prepare_campaign_recipients, compose_whatsapp_text
 from apps.emailing.models import (
     EmailCampaign,
     EmailTemplate,
@@ -39,6 +39,7 @@ from apps.emailing.models import (
 from django.conf import settings
 
 from .waha_test_messages import run_test_message
+from .waha_client import WahaClient, WahaClientError
 from .serializers import WahaTestMessageSerializer
 
 
@@ -513,10 +514,22 @@ class GmapsLeadAdmin(admin.ModelAdmin):
 @admin.register(WhatsAppContact)
 class WhatsAppContactAdmin(admin.ModelAdmin):
     """Admin for WhatsApp contacts."""
-    list_display = ['business_name', 'phone_number', 'chat_id_display', 'jid_display', 'category', 'is_verified', 'lead_link', 'created_at']
-    list_filter = ['is_verified', 'is_valid', 'category', 'created_at']
+    list_display = ['business_name', 'phone_number', 'chat_id_display', 'jid_display', 'category', 'is_verified', 'synced_to_waha', 'lead_link', 'created_at']
+    list_filter = ['is_verified', 'is_valid', 'synced_to_waha', 'category', 'created_at']
     search_fields = ['business_name', 'phone_number', 'chat_id', 'category']
-    readonly_fields = ['lead', 'phone_number', 'chat_id', 'jid', 'business_name', 'category', 'created_at', 'updated_at']
+    readonly_fields = [
+        'lead',
+        'phone_number',
+        'chat_id',
+        'jid',
+        'business_name',
+        'category',
+        'synced_to_waha',
+        'waha_synced_at',
+        'waha_sync_attempts',
+        'created_at',
+        'updated_at',
+    ]
     list_per_page = 50
     actions = ['mark_verified', 'mark_invalid', 'export_chat_ids']
     
@@ -529,6 +542,9 @@ class WhatsAppContactAdmin(admin.ModelAdmin):
         }),
         ('Verification', {
             'fields': ('is_verified', 'is_valid', 'last_checked')
+        }),
+        ('WAHA Sync', {
+            'fields': ('synced_to_waha', 'waha_synced_at', 'waha_sync_attempts')
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at')
@@ -1342,16 +1358,89 @@ class WhatsAppCampaignAdmin(admin.ModelAdmin):
         ]
         return custom + urls
 
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        extra_context = extra_context or {}
+        if object_id:
+            campaign = WhatsAppCampaign.objects.filter(pk=object_id).first()
+            if campaign:
+                stats = campaign.recipients.aggregate(
+                    total=Count("id"),
+                    pending=Count("id", filter=Q(status="pending")),
+                    sent=Count("id", filter=Q(status="sent")),
+                    failed=Count("id", filter=Q(status="failed")),
+                )
+                total = stats.get("total") or 0
+                sent = stats.get("sent") or 0
+                pending = stats.get("pending") or 0
+                failed = stats.get("failed") or 0
+                delivered_pct = int((sent / total) * 100) if total else 0
+                pending_pct = int((pending / total) * 100) if total else 0
+                last_sent_at = (
+                    campaign.recipients.aggregate(last_sent=Max("sent_at")).get("last_sent")
+                )
+                recent_recipients = list(
+                    campaign.recipients.select_related("lead")
+                    .order_by("-updated_at")[:5]
+                )
+                extra_context.update(
+                    {
+                        "campaign_stats": {
+                            "status": campaign.status,
+                            "total": total,
+                            "pending": pending,
+                            "sent": sent,
+                            "failed": failed,
+                            "delivered_pct": delivered_pct,
+                            "pending_pct": pending_pct,
+                            "last_sent_at": last_sent_at,
+                            "throttle": campaign.throttle_per_minute or 0,
+                            "delay_min_ms": campaign.delay_min_ms or 0,
+                            "delay_max_ms": campaign.delay_max_ms or 0,
+                        },
+                        "campaign_action_urls": {
+                            "prepare": reverse(
+                                "gmaps_leads_api:waha-campaign-prepare",
+                                args=[campaign.pk],
+                            ),
+                            "run": reverse(
+                                "gmaps_leads_api:waha-campaign-run",
+                                args=[campaign.pk],
+                            ),
+                            "test": reverse(
+                                "admin:gmaps_leads_whatsappcampaign_test_message",
+                                args=[campaign.pk],
+                            ),
+                        },
+                        "campaign_meta": {
+                            "job": campaign.job,
+                            "template_pool": campaign.template_pool,
+                            "text_template": campaign.text_template,
+                            "media_url": campaign.media_url,
+                        },
+                        "campaign_sample_recipients": recent_recipients,
+                    }
+                )
+        return super().changeform_view(
+            request,
+            object_id=object_id,
+            form_url=form_url,
+            extra_context=extra_context,
+        )
+
     def test_message_view(self, request, object_id, *args, **kwargs):
         campaign = get_object_or_404(WhatsAppCampaign, pk=object_id)
         from .models import WhatsAppTemplatePool, WhatsAppTemplate
+        eligible_pools = WhatsAppTemplatePool.objects.filter(is_active=True).filter(
+            Q(job_id=campaign.job_id) | Q(job__isnull=True)
+        )
+        templates = (
+            WhatsAppTemplate.objects.filter(is_active=True, pool__in=eligible_pools)
+            .select_related("pool")
+            .order_by("-id")[:200]
+        )
 
-        if request.method == "GET":
-            eligible_pools = WhatsAppTemplatePool.objects.filter(is_active=True).filter(
-                Q(job_id=campaign.job_id) | Q(job__isnull=True)
-            )
-            templates = WhatsAppTemplate.objects.filter(is_active=True, pool__in=eligible_pools).select_related("pool").order_by("-id")[:200]
-            context = {
+        def _base_context():
+            return {
                 **self.admin_site.each_context(request),
                 "opts": self.model._meta,
                 "original": campaign,
@@ -1360,10 +1449,15 @@ class WhatsAppCampaignAdmin(admin.ModelAdmin):
                 "templates": templates,
                 "campaign": campaign,
             }
+
+        if request.method == "GET":
+            context = _base_context()
+            context["form_values"] = {"source": "campaign", "dry_run": True}
             return render(request, "admin/gmaps_leads/whatsappcampaign/test_message.html", context)
 
         # POST: handle preview or send
-        source = request.POST.get("source") or "campaign"
+        post_values = {key: request.POST.get(key) for key in request.POST.keys()}
+        source = post_values.get("source") or "campaign"
         payload = {"campaign_id": campaign.id}
 
         def _set_if_present(key: str, value):
@@ -1377,72 +1471,55 @@ class WhatsAppCampaignAdmin(admin.ModelAdmin):
                 return
             payload[key] = value
 
-        _set_if_present("phone", request.POST.get("phone"))
-        _set_if_present("jid", request.POST.get("jid"))
-        _set_if_present("chat_id", request.POST.get("chat_id"))
+        _set_if_present("phone", post_values.get("phone"))
+        _set_if_present("jid", post_values.get("jid"))
+        _set_if_present("chat_id", post_values.get("chat_id"))
 
-        lead_id_raw = (request.POST.get("lead_id") or "").strip()
+        lead_id_raw = (post_values.get("lead_id") or "").strip()
         if lead_id_raw:
             try:
                 payload["lead_id"] = int(lead_id_raw)
             except ValueError:
-                self.message_user(request, "lead_id must be an integer.", level=messages.ERROR)
-                return redirect("admin:gmaps_leads_whatsappcampaign_test_message", object_id)
+                context = _base_context()
+                context["form_values"] = post_values
+                context["form_error"] = "lead_id must be an integer."
+                return render(request, "admin/gmaps_leads/whatsappcampaign/test_message.html", context)
 
-        _set_if_present("business_name", request.POST.get("business_name"))
-        _set_if_present("category", request.POST.get("category"))
-        _set_if_present("website", request.POST.get("website"))
-        _set_if_present("reply_to", request.POST.get("reply_to"))
+        _set_if_present("business_name", post_values.get("business_name"))
+        _set_if_present("category", post_values.get("category"))
+        _set_if_present("website", post_values.get("website"))
+        _set_if_present("reply_to", post_values.get("reply_to"))
 
-        if request.POST.get("link_preview") in ("on", "true", "1"):
+        if post_values.get("link_preview") in ("on", "true", "1"):
             payload["link_preview"] = True
-        if request.POST.get("link_preview_high_quality") in ("on", "true", "1"):
+        if post_values.get("link_preview_high_quality") in ("on", "true", "1"):
             payload["link_preview_high_quality"] = True
 
         if source == "text":
-            payload["text"] = request.POST.get("text") or ""
+            payload["text"] = post_values.get("text") or ""
         elif source == "template":
-            template_id = request.POST.get("template_id")
+            template_id = post_values.get("template_id")
             if template_id:
                 payload["template_id"] = int(template_id)
         elif source == "pool":
-            pool_id = request.POST.get("pool_id")
+            pool_id = post_values.get("pool_id")
             if pool_id:
                 payload["pool_id"] = int(pool_id)
 
-        if request.POST.get("submit_action") == "send":
-            payload["dry_run"] = False
-        else:
-            payload["dry_run"] = True
+        payload["dry_run"] = post_values.get("submit_action") != "send"
+        post_values["dry_run"] = "on" if payload["dry_run"] else "false"
 
         serializer = WahaTestMessageSerializer(data=payload)
+        context = _base_context()
+        context["form_values"] = post_values
         try:
             serializer.is_valid(raise_exception=True)
             result = run_test_message(serializer.validated_data)
+            context["result"] = result
         except Exception as exc:  # noqa: BLE001
-            self.message_user(request, f"Test message failed: {exc}", level=messages.ERROR)
-            return redirect("admin:gmaps_leads_whatsappcampaign_test_message", object_id)
+            context["form_error"] = str(exc)
 
-        if result.get("dry_run"):
-            rendered = result.get("rendered_text") or ""
-            self.message_user(
-                request,
-                format_html(
-                    "Preview for <code>{}</code>:<br><pre style='white-space:pre-wrap'>{}</pre>",
-                    result.get("chat_id"),
-                    rendered,
-                ),
-                level=messages.INFO,
-            )
-        else:
-            waha = result.get("waha") or {}
-            if waha.get("success"):
-                msg_id = (waha.get("response") or {}).get("id") or "OK"
-                self.message_user(request, f"Sent test message successfully (id: {msg_id}).", level=messages.SUCCESS)
-            else:
-                self.message_user(request, f"WAHA send failed: {waha}", level=messages.ERROR)
-
-        return redirect("admin:gmaps_leads_whatsappcampaign_test_message", object_id)
+        return render(request, "admin/gmaps_leads/whatsappcampaign/test_message.html", context)
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
@@ -1479,6 +1556,96 @@ class WhatsAppCampaignRecipientAdmin(admin.ModelAdmin):
     list_filter = ("status", "campaign")
     search_fields = ("campaign__name", "lead__title", "lead__phone")
     readonly_fields = ("created_at", "updated_at")
+    change_form_template = "admin/gmaps_leads/whatsappcampaignrecipient/change_form.html"
+
+    def _send_recipient_message(self, request, recipient):
+        if not recipient.lead:
+            self.message_user(request, "Recipient is missing lead information.", level=messages.ERROR)
+            return False
+        contact = recipient.whatsapp_contact
+        if not contact:
+            if recipient.lead.phone_type != "whatsapp":
+                self.message_user(request, "Lead phone is not WhatsApp eligible.", level=messages.ERROR)
+                return False
+            try:
+                contact = WhatsAppContact.create_from_lead(recipient.lead)
+                recipient.whatsapp_contact = contact
+                recipient.save(update_fields=["whatsapp_contact", "updated_at"])
+            except Exception as exc:
+                self.message_user(request, f"Failed to create WhatsApp contact: {exc}", level=messages.ERROR)
+                return False
+
+        text_to_send = compose_whatsapp_text(recipient.rendered_text or "", recipient.media_url)
+        if not text_to_send.strip():
+            self.message_user(request, "Rendered text is empty. Please provide content before sending.", level=messages.WARNING)
+            return False
+
+        try:
+            client = WahaClient()
+        except WahaClientError as exc:
+            self.message_user(request, f"WAHA is not configured: {exc}", level=messages.ERROR)
+            return False
+        except Exception as exc:
+            self.message_user(request, f"Failed to initialize WAHA client: {exc}", level=messages.ERROR)
+            return False
+
+        try:
+            result = client.send_text(chat_id=contact.chat_id, text=text_to_send)
+        except Exception as exc:  # noqa: BLE001
+            recipient.status = "failed"
+            recipient.error = str(exc)
+            recipient.attempts = (recipient.attempts or 0) + 1
+            recipient.save(update_fields=["status", "error", "attempts", "updated_at"])
+            self.message_user(request, f"WAHA send failed: {exc}", level=messages.ERROR)
+            return False
+
+        recipient.attempts = (recipient.attempts or 0) + 1
+        if result.get("success"):
+            recipient.status = "sent"
+            recipient.sent_at = timezone.now()
+            recipient.message_id = (result.get("response") or {}).get("id")
+            recipient.error = None
+            recipient.save(update_fields=["status", "sent_at", "message_id", "attempts", "error", "updated_at"])
+            msg_id = recipient.message_id or "OK"
+            self.message_user(request, f"Message sent to {contact.chat_id} (id: {msg_id}).", level=messages.SUCCESS)
+            return True
+
+        recipient.status = "failed"
+        recipient.error = str(result)
+        recipient.save(update_fields=["status", "error", "attempts", "updated_at"])
+        self.message_user(request, f"WAHA send failed: {result}", level=messages.ERROR)
+        return False
+
+    def response_change(self, request, obj):
+        if "_next" in request.POST and obj.campaign:
+            next_recipient = (
+                obj.campaign.recipients.filter(id__gt=obj.id).order_by("id").first()
+            )
+            if next_recipient:
+                return redirect(
+                    reverse(
+                        "admin:gmaps_leads_whatsappcampaignrecipient_change",
+                        args=[next_recipient.pk],
+                    )
+                )
+            self.message_user(request, "No more recipients in this campaign.", level=messages.INFO)
+            return redirect(request.path)
+
+        if "_send" in request.POST or "_send_and_next" in request.POST:
+            sent_ok = self._send_recipient_message(request, obj)
+            if sent_ok:
+                obj.refresh_from_db()
+            if "_send_and_next" in request.POST and sent_ok and obj.campaign:
+                next_recipient = (
+                    obj.campaign.recipients.filter(status="pending", id__gt=obj.id)
+                    .order_by("id")
+                    .first()
+                )
+                if next_recipient:
+                    url = reverse("admin:gmaps_leads_whatsappcampaignrecipient_change", args=[next_recipient.pk])
+                    return redirect(url)
+            return redirect(request.path)
+        return super().response_change(request, obj)
 
 
 @admin.register(WhatsAppTemplatePool)

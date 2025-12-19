@@ -38,7 +38,7 @@ INTERNAL_IPS = [
 ALLOWED_HOSTS = ['*']
 
 # Add here your deployment HOSTS
-CSRF_TRUSTED_ORIGINS = ['https://app.whatsynaptic.tech', 'http://localhost:8000', 'http://127.0.0.1:8000','https://app.delilclinic.com']
+CSRF_TRUSTED_ORIGINS = ['https://app.whatsynaptic.tech', 'http://localhost:8000', 'http://127.0.0.1:8000','https://app.delilclinic.com','https://app.beyondclinic.online']
 
 # Allow embedding in iframes (for integration with other sites)
 X_FRAME_OPTIONS = "ALLOWALL"
@@ -83,6 +83,9 @@ INSTALLED_APPS = [
     
     # Google Maps Leads
     "gmaps_leads",
+
+    # Notifications
+    "magic_notifier",
 
     # Email infrastructure
     "anymail",
@@ -432,6 +435,39 @@ EMAIL_USE_TLS = active_provider.get("USE_TLS", str2bool(os.getenv("EMAIL_USE_TLS
 EMAIL_USE_SSL = active_provider.get("USE_SSL", str2bool(os.getenv("EMAIL_USE_SSL", "False")))
 EMAIL_HOST_USER = active_provider.get("USERNAME", os.getenv("EMAIL_HOST_USER", ""))
 EMAIL_HOST_PASSWORD = active_provider.get("PASSWORD", os.getenv("EMAIL_HOST_PASSWORD", ""))
+
+# Magic Notifier configuration (email + WhatsApp via WAHA)
+NOTIFIER = {
+    "THREADED": False,
+    "DEFAULT_MODE": "user",
+    "GET_USER_NUMBER": "magic_notifier.utils.get_user_number",
+    "USER_FROM_WS_TOKEN_FUNCTION": "magic_notifier.utils.get_user_from_ws_token",
+    "EMAIL": {
+        "DEFAULT_GATEWAY": "default",
+        "default": {
+            "HOST": EMAIL_HOST,
+            "PORT": EMAIL_PORT,
+            "USER": EMAIL_HOST_USER,
+            "PASSWORD": EMAIL_HOST_PASSWORD,
+            "FROM": DEFAULT_FROM_EMAIL,
+            "USE_SSL": EMAIL_USE_SSL,
+            "USE_TLS": EMAIL_USE_TLS,
+            "CLIENT": "magic_notifier.email_clients.django_email.DjangoEmailClient",
+        },
+    },
+    "WHATSAPP": {
+        "DEFAULT_GATEWAY": "waha",
+        "GATEWAYS": {
+            "waha": {
+                "CLIENT": "magic_notifier.whatsapp_clients.waha_client.WahaClient",
+                "API_KEY": WAHA_API_KEY,
+                "URL": WAHA_SERVICE_URL,
+                "SESSION": WAHA_SESSION,
+                "TIMEOUT": WAHA_TIMEOUT,
+            }
+        },
+    },
+}
 
 ########################################
 # Chatwoot (optional, for threading replies)

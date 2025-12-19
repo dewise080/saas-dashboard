@@ -253,7 +253,10 @@ class WhatsAppContact(models.Model):
     is_verified = models.BooleanField(default=False, help_text="Whether this WhatsApp number has been verified")
     is_valid = models.BooleanField(default=True, help_text="Whether this is a valid WhatsApp number")
     last_checked = models.DateTimeField(blank=True, null=True, help_text="Last time the number was validated")
-    
+    synced_to_waha = models.BooleanField(default=False, help_text="Marked after a successful WAHA sync")
+    waha_synced_at = models.DateTimeField(blank=True, null=True, help_text="Last time this contact synced to WAHA")
+    waha_sync_attempts = models.IntegerField(default=0, help_text="Number of attempts to sync this contact to WAHA")
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

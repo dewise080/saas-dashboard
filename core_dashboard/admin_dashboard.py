@@ -45,6 +45,13 @@ APP_DEFINITIONS = [
         ],
     },
     {
+        "key": "notifier",
+        "label": "Notifier",
+        "models": [
+            ("NotificationEvent", "magic_notifier"),
+        ],
+    },
+    {
         "key": "n8n",
         "label": "n8n Mirror",
         "models": [
@@ -152,11 +159,76 @@ def build_dashboard_data() -> Dict[str, dict]:
             continue
         data["kpis"][key] = _safe_count(model)
 
+    # Notifier stats (sent vs failed)
+    notifier_model = get_model("magic_notifier", "NotificationEvent")
+    if notifier_model:
+        try:
+            data["kpis"]["notifier_sent"] = notifier_model.objects.filter(status="sent").count()
+            data["kpis"]["notifier_failed"] = notifier_model.objects.filter(status="failed").count()
+        except Exception as exc:
+            logger.warning("Dashboard: unable to count notifier events: %s", exc)
+            data["kpis"]["notifier_sent"] = None
+            data["kpis"]["notifier_failed"] = None
+    else:
+        data["kpis"]["notifier_sent"] = None
+        data["kpis"]["notifier_failed"] = None
+
+    # Lead breakdown pies
+    lead_model = get_model("gmaps_leads", "GmapsLead")
+    if lead_model:
+        try:
+            total_leads = lead_model.objects.count()
+            with_website = lead_model.objects.exclude(website__isnull=True).exclude(website="").count()
+            with_emails = lead_model.objects.exclude(emails__isnull=True).exclude(emails="").count()
+
+            wa = 0
+            local = 0
+            other = 0
+            none = 0
+            for lead in lead_model.objects.all().only("phone"):
+                phone_type = getattr(lead, "phone_type", "none")
+                if phone_type == "whatsapp":
+                    wa += 1
+                elif phone_type == "local":
+                    local += 1
+                elif phone_type == "other":
+                    other += 1
+                else:
+                    none += 1
+
+            data["charts"]["lead_phone_breakdown"] = {
+                "total": total_leads,
+                "whatsapp": wa,
+                "local": local,
+                "other": other,
+                "none": none,
+            }
+            data["charts"]["lead_website_breakdown"] = {
+                "total": total_leads,
+                "with": with_website,
+                "without": max(total_leads - with_website, 0),
+            }
+            data["charts"]["lead_email_breakdown"] = {
+                "total": total_leads,
+                "with": with_emails,
+                "without": max(total_leads - with_emails, 0),
+            }
+        except Exception as exc:
+            logger.warning("Dashboard: unable to build lead breakdown: %s", exc)
+            data["charts"]["lead_phone_breakdown"] = {}
+            data["charts"]["lead_website_breakdown"] = {}
+            data["charts"]["lead_email_breakdown"] = {}
+    else:
+        data["charts"]["lead_phone_breakdown"] = {}
+        data["charts"]["lead_website_breakdown"] = {}
+        data["charts"]["lead_email_breakdown"] = {}
+
     chart_targets = [
         ("leads_30d", "gmaps_leads", "GmapsLead"),
         ("jobs_30d", "gmaps_leads", "ScrapeJob"),
         ("email_sends_30d", "emailing", "EmailSend"),
         ("executions_30d", "n8n_mirror", "ExecutionEntity"),
+        ("notifier_30d", "magic_notifier", "NotificationEvent"),
     ]
 
     for key, app_label, model_name in chart_targets:

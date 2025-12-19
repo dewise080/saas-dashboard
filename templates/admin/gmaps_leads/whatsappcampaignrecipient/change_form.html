@@ -1,0 +1,84 @@
+{% extends "admin/change_form.html" %}
+{% load i18n %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <style>
+    .wa-recipient-summary {
+      border-radius: 12px;
+      border: none;
+      box-shadow: 0 6px 24px rgba(15, 23, 42, 0.08);
+      margin-bottom: 16px;
+    }
+    .wa-recipient-summary .badge {
+      font-size: 0.85rem;
+      padding: 6px 12px;
+      text-transform: uppercase;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  {% if original %}
+    <div class="card wa-recipient-summary">
+      <div class="card-body">
+        <div class="d-flex justify-content-between flex-wrap align-items-center">
+          <div>
+            <h3 class="card-title mb-1">{{ original.lead.title|default:original.campaign.name }}</h3>
+            <p class="mb-0 text-muted">
+              Campaign: <strong>{{ original.campaign }}</strong>
+              {% if original.lead and original.lead.phone %}
+                · Phone: <strong>{{ original.lead.phone }}</strong>
+              {% endif %}
+            </p>
+          </div>
+          <span class="badge {% if original.status == 'sent' %}bg-success{% elif original.status == 'failed' %}bg-danger{% else %}bg-secondary{% endif %}">
+            {{ original.status|upper }}
+          </span>
+        </div>
+        <div class="mt-3 row">
+          <div class="col-md-4">
+            <small class="text-muted d-block">Message ID</small>
+            <span>{{ original.message_id|default:"—" }}</span>
+          </div>
+          <div class="col-md-4">
+            <small class="text-muted d-block">Sent at</small>
+            <span>{% if original.sent_at %}{{ original.sent_at|date:"M j, H:i" }}{% else %}—{% endif %}</span>
+          </div>
+          <div class="col-md-4">
+            <small class="text-muted d-block">Attempts</small>
+            <span>{{ original.attempts|default:0 }}</span>
+          </div>
+        </div>
+        {% if original.error %}
+          <div class="alert alert-warning mt-3 mb-0">
+            <strong>Last error:</strong> {{ original.error }}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}
+
+{% block submit_buttons_top %}
+  {{ block.super }}
+  {% if original %}
+    <div class="submit-row">
+      <button type="submit" class="button btn btn-success" style="background:#22c55e;border:none;" name="_send">💬 {% trans "Send message" %}</button>
+      <button type="submit" class="button default btn btn-outline-success" name="_send_and_next">🚀 {% trans "Send & next" %}</button>
+      <button type="submit" class="button btn btn-outline-secondary" name="_next">➡️ {% trans "Next recipient" %}</button>
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block submit_buttons_bottom %}
+  {{ block.super }}
+  {% if original %}
+    <div class="submit-row">
+      <button type="submit" class="button btn btn-success" style="background:#22c55e;border:none;" name="_send">💬 {% trans "Send message" %}</button>
+      <button type="submit" class="button default btn btn-outline-success" name="_send_and_next">🚀 {% trans "Send & next" %}</button>
+      <button type="submit" class="button btn btn-outline-secondary" name="_next">➡️ {% trans "Next recipient" %}</button>
+    </div>
+  {% endif %}
+{% endblock %}

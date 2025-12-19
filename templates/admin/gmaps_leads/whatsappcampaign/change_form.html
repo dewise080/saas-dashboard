@@ -11,3 +11,234 @@
     </li>
   {% endif %}
 {% endblock %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <style>
+    .campaign-dashboard {
+      margin-bottom: 20px;
+    }
+    .campaign-dashboard .card {
+      border-radius: 12px;
+      box-shadow: 0 5px 20px rgba(15, 23, 42, 0.07);
+      margin-bottom: 16px;
+      border: none;
+    }
+    .campaign-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 16px;
+    }
+    .campaign-stats-grid .stat-pill {
+      background: var(--body-bg, #f8fafc);
+      border-radius: 10px;
+      padding: 14px;
+      text-align: center;
+    }
+    .campaign-stats-grid .stat-value {
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+    .campaign-actions .btn {
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+    .campaign-samples table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .campaign-samples th,
+    .campaign-samples td {
+      padding: 10px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    #campaign-action-output {
+      margin-top: 12px;
+      font-size: 0.95rem;
+      max-height: 240px;
+      overflow: auto;
+      background: #0f172a;
+      color: #f1f5f9;
+      padding: 12px;
+      border-radius: 8px;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  {% if campaign_stats %}
+    <div class="campaign-dashboard">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between flex-wrap">
+            <div>
+              <h3 class="card-title mb-1">{{ original.name }}</h3>
+              <p class="text-muted mb-2">
+                Status: <strong class="text-uppercase">{{ campaign_stats.status }}</strong>
+                {% if campaign_meta.job %} · Job: <strong>{{ campaign_meta.job.name }}</strong>{% endif %}
+              </p>
+              <p class="mb-0 text-muted">
+                Throttle {{ campaign_stats.throttle }} msg/min · Delay {{ campaign_stats.delay_min_ms }}–{{ campaign_stats.delay_max_ms }} ms
+                {% if campaign_stats.last_sent_at %}
+                  · Last send {{ campaign_stats.last_sent_at|date:"M j, H:i" }}
+                {% endif %}
+              </p>
+            </div>
+          </div>
+          <div class="campaign-stats-grid mt-4">
+            <div class="stat-pill">
+              <div class="text-uppercase text-muted small">Total Recipients</div>
+              <div class="stat-value">{{ campaign_stats.total }}</div>
+            </div>
+            <div class="stat-pill">
+              <div class="text-uppercase text-muted small">Pending</div>
+              <div class="stat-value">{{ campaign_stats.pending }}</div>
+              <div class="small text-muted">{{ campaign_stats.pending_pct }}%</div>
+            </div>
+            <div class="stat-pill">
+              <div class="text-uppercase text-muted small">Sent</div>
+              <div class="stat-value text-success">{{ campaign_stats.sent }}</div>
+              <div class="small text-muted">{{ campaign_stats.delivered_pct }}%</div>
+            </div>
+            <div class="stat-pill">
+              <div class="text-uppercase text-muted small">Failed</div>
+              <div class="stat-value text-danger">{{ campaign_stats.failed }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card campaign-actions" id="campaign-action-box"
+           data-prepare-url="{{ campaign_action_urls.prepare }}"
+           data-run-url="{{ campaign_action_urls.run }}">
+        <div class="card-body">
+          <div class="d-flex justify-content-between flex-wrap align-items-center">
+            <div>
+              <h4 class="card-title mb-1">Quick actions</h4>
+              <p class="text-muted mb-0">Manage recipients & sending without leaving this page.</p>
+            </div>
+            <div class="text-end mt-3 mt-md-0">
+              <label class="me-3">
+                Limit
+                <input type="number" min="1" id="campaign-action-limit" class="vTextField" value="{{ campaign_stats.total|default:100 }}">
+              </label>
+              <label>
+                <input type="checkbox" id="campaign-action-overwrite"> Overwrite existing
+              </label>
+            </div>
+          </div>
+          <div class="mt-3">
+            <button type="button" class="btn btn-outline-primary" data-action="prepare">
+              <i class="fas fa-sync-alt"></i> Prepare recipients
+            </button>
+            <button type="button" class="btn btn-primary" data-action="run">
+              <i class="fas fa-paper-plane"></i> Run campaign
+            </button>
+            <a href="{{ campaign_action_urls.test }}" class="btn btn-secondary">
+              <i class="fas fa-vial"></i> Test message
+            </a>
+          </div>
+          <div id="campaign-action-output" class="mt-3" hidden></div>
+        </div>
+      </div>
+
+      <div class="card campaign-samples">
+        <div class="card-body">
+          <h4 class="card-title mb-3">Latest recipients</h4>
+          {% if campaign_sample_recipients %}
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Lead</th>
+                    <th>Status</th>
+                    <th>Rendered Text</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for r in campaign_sample_recipients %}
+                    <tr>
+                      <td>
+                        {% if r.lead %}
+                          <strong>{{ r.lead.title }}</strong><br>
+                          <small class="text-muted">{{ r.lead.phone }}</small>
+                        {% else %}
+                          —
+                        {% endif %}
+                      </td>
+                      <td><span class="badge bg-light text-dark text-uppercase">{{ r.status }}</span></td>
+                      <td>
+                        {% if r.rendered_text %}
+                          <small>{{ r.rendered_text|truncatechars:120 }}</small>
+                        {% else %}
+                          <small class="text-muted">No text generated yet.</small>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-muted mb-0">No recipients yet. Click “Prepare recipients” to start.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}
+
+{% block footer %}
+  {{ block.super }}
+  <script>
+    (function() {
+      const box = document.getElementById("campaign-action-box");
+      if (!box) return;
+      const prepareUrl = box.dataset.prepareUrl;
+      const runUrl = box.dataset.runUrl;
+      const output = document.getElementById("campaign-action-output");
+      const csrfInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+      const csrfToken = csrfInput ? csrfInput.value : "";
+
+      async function postAction(kind) {
+        const endpoint = kind === "prepare" ? prepareUrl : runUrl;
+        if (!endpoint) return;
+        const payload = {};
+        if (kind === "prepare") {
+          const limitField = document.getElementById("campaign-action-limit");
+          const overwriteField = document.getElementById("campaign-action-overwrite");
+          const limit = limitField && limitField.value ? parseInt(limitField.value, 10) : null;
+          if (limit) payload.limit = limit;
+          if (overwriteField && overwriteField.checked) {
+            payload.overwrite = true;
+          }
+        }
+        output.hidden = false;
+        output.innerText = "Running " + kind + "…";
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": csrfToken,
+            },
+            body: JSON.stringify(payload),
+          });
+          const text = await response.text();
+          const prefix = response.ok ? "✅ Success" : "⚠️ Completed with errors";
+          output.innerText = prefix + " (" + response.status + ")\n\n" + text;
+        } catch (error) {
+          output.innerText = "❌ Request failed: " + error;
+        }
+      }
+
+      box.querySelectorAll("[data-action]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const kind = btn.dataset.action;
+          postAction(kind);
+        });
+      });
+    })();
+  </script>
+{% endblock %}
