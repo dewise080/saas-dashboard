@@ -200,6 +200,74 @@ Optional when verified and relevant:
 
 Do not overload the bottom with badges.
 
+## Decision Freeze — Do Not Reopen Without Evidence
+
+These are settled defaults. Do not debate them again on every creative.
+
+### Core creative direction
+- Primary brand creative system: hyper-realistic humans in believable service-business situations.
+- Secondary experimental system: stylized/brainhead characters only for pattern interrupts, educational concepts, retargeting, or controlled A/B tests.
+- Default allocation: 70–80% human creative, 20–30% character experimentation.
+- Human creative is the default for LinkedIn and premium brand-building work.
+
+### Production method
+- Single-pass finished-ad generation is prohibited.
+- Stage 1 must be a clean photographic plate.
+- Stage 2 adds real brand assets, typography, proof UI, and CTA.
+- If the base photograph does not pass realism, stop. Do not “save it” with design.
+
+### Visual density
+Default maximum per static ad:
+- 1 dominant headline
+- 1 hero scene
+- 1 proof moment
+- 1 CTA
+- 1 short reassurance line
+
+Feature grids, icon rows, multiple floating chat cards, and large explanatory blocks are exceptions, not defaults.
+
+### Character/casting
+- Use attractive, aspirational adults who still look genuinely real and appropriate to the business context.
+- Beauty must not come at the cost of authenticity.
+- Prefer natural asymmetry, real skin texture, believable posture, task-focused expressions, and physically plausible interactions.
+- Never use “AI-perfect” faces, plastic skin, impossible anatomy, decorative posing, or glamour that breaks the business story.
+
+### Logo
+- Never regenerate or reinterpret the Runs It All logo inside an image model.
+- Use the canonical approved asset only.
+- Strategic placement beats habitual placement.
+- The logo must support memory without competing with the hook.
+
+### Devices and UI
+- Important phone screens are composited after the photographic plate.
+- Never depend on generated UI text for final proof.
+- Use one believable proof state rather than an invented full dashboard.
+
+### Formats
+- 2:3 remains the preferred premium poster/storyboard proportion.
+- 4:5 is the master cross-platform feed format for Instagram, Facebook, and LinkedIn.
+- 9:16 is used only when the placement specifically requires it.
+
+### Copy
+- Simple English only.
+- One idea per ad.
+- Hormozi-style clarity: obvious value, obvious cost of inaction, obvious next step.
+- “Try it free →” + “Free credits included” remains the default low-friction offer treatment unless campaign strategy says otherwise.
+
+### Quality floor
+A new creative must be at least as:
+- realistic
+- premium
+- simple
+- strategically branded
+- believable
+- visually controlled
+as the approved baseline.
+
+If it is not clearly equal or better, reject it.
+
+
+
 ## Current Approved Creative Mood
 
 The strongest recent executions use:
