@@ -15,9 +15,10 @@ Use this skill for new ad ideas, campaign concepts, WhatsApp Status creative, po
 4. creative-director
 5. senior-art-director
 6. brand-guardian
-7. realism-visual-qa-director
-8. performance-creative-analyst
-9. creative-challenger
+7. photorealism-production-director
+8. realism-visual-qa-director
+9. performance-creative-analyst
+10. creative-challenger
 
 The tenth agent is the forcing function. It pushes the council beyond “good enough.”
 
@@ -57,6 +58,35 @@ Do not approve merely because the image is attractive.
 
 ### Gate 11 — Performance plan
 Performance Creative Analyst defines a controlled A/B test and what the team should learn.
+
+## Decision Governance
+
+The council is not allowed to reopen settled brand/production decisions without evidence.
+
+### Fixed defaults
+- Human-first premium realism is the primary system.
+- Character creatives are secondary tests.
+- Two-pass production is mandatory.
+- Canonical logo assets only.
+- 4:5 for cross-platform feed; 2:3 for premium poster exploration; 9:16 only when required.
+- Minimal copy and one primary idea.
+- No generic AI visual language.
+
+### When a decision may be reopened
+Only when:
+- campaign data materially contradicts the default
+- the owner explicitly changes direction
+- a platform constraint requires it
+- a new product capability changes the proposition
+
+### Council efficiency
+The council should improve the concept, not create bureaucracy.
+- Psychology, response, persuasion and concept can be reviewed in parallel where practical.
+- Brand and realism review happen after the photographic plate exists.
+- The Challenger focuses on material improvements only.
+- If no material improvement remains, approve and move to testing.
+
+
 
 ## Approval Standard
 
