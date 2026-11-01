@@ -318,6 +318,56 @@ D. **Your business needs a system. Not more of your time.**
 
 Keep the rest of the ad stable enough to learn which hook actually wins.
 
+
+## Persuasion Science Layer
+
+Use ideas from *Yes!: 50 Scientifically Proven Ways to Be Persuasive* and Cialdini-style influence principles as a **filter**, not as a gimmick pile. The book's core lesson is that small, evidence-based changes in wording, framing, sequencing, and context can materially change response. Use no more than 1–2 primary persuasion triggers in one Status creative.
+
+### Preferred triggers for Runs It All
+
+- **Loss aversion:** make the cost of inaction visible. Example: “Every late reply can become a lost booking.”
+- **Social proof:** when real proof exists, show what similar businesses are doing. Never invent customer counts, testimonials, or adoption claims.
+- **Similarity:** speak in the exact world of the target niche. A salon owner should see salon messages, not generic SaaS language.
+- **Commitment / consistency:** ask for the smallest natural next step. “Try it free” beats asking cold traffic to “Transform your business.”
+- **Reciprocity:** free trial and free credits should feel like genuine value given first, not bait.
+- **Reason-giving:** give one simple reason for the action. “Try it free — so you can see what your WhatsApp handles without you.”
+- **Contrast:** show manual vs handled, late reply vs instant reply, owner-on-phone vs owner-free. One clean contrast is stronger than a feature dump.
+- **Specificity:** concrete situations beat vague claims. “Can I book tomorrow?” is stronger than “automate customer engagement.”
+- **Ease / processing fluency:** simple words, short sentences, familiar phrases, large readable type. If the viewer has to decode it, reject it.
+- **Anchoring:** where appropriate, establish the larger hidden cost before presenting the low-friction trial. Do not use fake savings.
+- **Scarcity:** use only when real and verifiable. Never fake countdowns or limited spots.
+- **Authority / trust:** use credible product proof, real UI, clear brand identity, and verified claims instead of unsupported superlatives.
+
+### Hormozi Simplicity Rule
+
+Write so a busy owner understands it instantly.
+
+Prefer:
+- “Missed reply. Lost booking.”
+- “You work. It follows up.”
+- “Try it free.”
+- “Your customers get answers. You get your time back.”
+
+Reject:
+- “Omnichannel conversational AI orchestration”
+- “Customer lifecycle automation infrastructure”
+- “AI-powered business transformation”
+
+### Small-Change Test
+
+Before shipping, ask:
+1. Can one simpler word replace a technical word?
+2. Can one sentence be removed?
+3. Can the consequence be made more concrete?
+4. Can the next step feel smaller and easier?
+5. Can the same claim be made more believable by showing proof instead of saying it?
+6. Is the persuasion trigger obvious enough to work but subtle enough to preserve trust?
+
+### Ethical Guardrail
+
+Persuasion must reduce friction and clarify value, not deceive. No fabricated proof, fake scarcity, hidden conditions, misleading guarantees, or fear claims that cannot be supported. Premium trust compounds; manipulation destroys it.
+
+
 ## Required Output for Each Creative
 
 Always provide:
