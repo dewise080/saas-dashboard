@@ -1,13 +1,13 @@
 ---
 name: creative-council
-description: Orchestrates the 9-agent Runs It All Creative Council to generate, challenge, art-direct, QA, and test premium advertising ideas.
+description: Orchestrates the 10-agent Runs It All Creative Council to generate, challenge, art-direct, QA, and test premium advertising ideas.
 ---
 
 # Runs It All Creative Council
 
 Use this skill for new ad ideas, campaign concepts, WhatsApp Status creative, posters, Reels/Story concepts, and major creative revisions.
 
-## Council — 9 Agents
+## Council — 10 Agents
 
 1. customer-psychology-strategist
 2. direct-response-strategist
@@ -19,7 +19,7 @@ Use this skill for new ad ideas, campaign concepts, WhatsApp Status creative, po
 8. performance-creative-analyst
 9. creative-challenger
 
-The ninth agent is the forcing function. It pushes the council beyond “good enough.”
+The tenth agent is the forcing function. It pushes the council beyond “good enough.”
 
 ## Assembly Order
 
@@ -42,17 +42,20 @@ Weak concepts die here.
 ### Gate 6 — Art direction
 Senior Art Director converts survivors into premium 2:3 hyper-realistic visual briefs.
 
-### Gate 7 — Brand
+### Gate 7 — Photorealistic production
+Photorealism Production Director enforces a two-pass method: clean commercial photograph first; controlled logo, typography, UI and CTA compositing second. The base photograph must pass before any ad layer is added.
+
+### Gate 8 — Brand
 Brand Guardian checks identity, logo strategy, palette, typography, and recognition.
 
-### Gate 8 — Realism
+### Gate 9 — Realism
 Realism & Visual QA Director checks people, phones, UI, perspective, lighting, materials, text, and AI artifacts.
 
-### Gate 9 — Challenge #2
+### Gate 10 — Challenge #2
 Creative Challenger reviews the near-final work again and asks what can be materially improved.
 Do not approve merely because the image is attractive.
 
-### Gate 10 — Performance plan
+### Gate 11 — Performance plan
 Performance Creative Analyst defines a controlled A/B test and what the team should learn.
 
 ## Approval Standard
@@ -61,17 +64,18 @@ A concept can ship only when:
 - one-second comprehension is strong
 - the idea is commercially meaningful
 - copy is simple
-- the visual is hyper-realistic
+- the clean photographic plate is hyper-realistic before branding/compositing
 - brand recognition is unmistakable
 - logo placement is strategic
 - the offer is clear
-- the piece feels premium, not AI-generated
+- the piece feels like premium commercial photography and controlled compositing, not AI-generated poster art
 - the Challenger has no material unresolved objection
 
 ## Default Creative Baseline
 Read:
 - .claude/skills/premium-status-ad/SKILL.md
 - .claude/skills/premium-status-ad/references/approved-runs-it-all-creative-baseline.md
+- .claude/skills/photorealistic-ad-production/SKILL.md
 
 Default canvas: 2:3 vertical.
 Use 9:16 only when the media placement specifically requires it.
