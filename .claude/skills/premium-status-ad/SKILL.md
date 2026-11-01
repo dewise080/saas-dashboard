@@ -368,6 +368,55 @@ Before shipping, ask:
 Persuasion must reduce friction and clarify value, not deceive. No fabricated proof, fake scarcity, hidden conditions, misleading guarantees, or fear claims that cannot be supported. Premium trust compounds; manipulation destroys it.
 
 
+
+## Offer / CTA Hierarchy
+
+Default CTA stack for cold traffic:
+
+**Try it free →**
+**No credit card required**
+
+Use **Free credits included** only when it adds clarity or value beyond the free trial. It is usually a secondary trust/value detail, not the strongest reassurance line. If the trial already includes credits by definition, prefer the stronger friction remover: **No credit card required**.
+
+Recommended order of strength for cold traffic:
+1. Try it free
+2. No credit card required
+3. Keep your number
+4. Free credits included
+
+Do not stack all four unless the layout can carry them without looking promotional or cluttered. Premium creative should usually show one CTA + one reassurance.
+
+## Runs It All Creative Formula — v1
+
+Every ad should pass this sequence:
+
+1. **Interrupt** — one line that stops the eye.
+2. **Recognition** — a familiar pain, situation, or message.
+3. **Consequence** — what the old way costs: lost booking, late reply, stress, missed follow-up.
+4. **Contrast** — show the new reality with the system.
+5. **Proof** — one visible action: reply, booking, reminder, review, follow-up.
+6. **Identity shift** — owner stops being the system.
+7. **Low-friction offer** — Try it free.
+8. **Risk remover** — No credit card required.
+9. **Brand close** — Runs It All. Feel lighter.
+
+Use only the subset needed for the creative. Do not force all nine onto one poster.
+
+## Continuous Improvement Rule
+
+Before finalizing any creative, ask:
+- Can the hook be shorter?
+- Can the message be understood in under 2 seconds?
+- Can one line be removed?
+- Can a visual prove the promise instead of explaining it?
+- Is the pain specific enough to feel real?
+- Is the CTA easier to say yes to?
+- Does the piece still look premium if the logo is removed?
+- Does the brand placement feel intentional rather than decorative?
+- Does the person / phone / environment look convincingly real?
+- Does the first glance create trust before persuasion?
+
+
 ## Required Output for Each Creative
 
 Always provide:
