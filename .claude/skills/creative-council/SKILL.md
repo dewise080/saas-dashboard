@@ -106,6 +106,7 @@ Read:
 - .claude/skills/premium-status-ad/SKILL.md
 - .claude/skills/premium-status-ad/references/approved-runs-it-all-creative-baseline.md
 - .claude/skills/photorealistic-ad-production/SKILL.md
+- .claude/skills/creative-council/references/runs-it-all-master-creative-super-prompt.md
 
 Default canvas: 2:3 vertical.
 Use 9:16 only when the media placement specifically requires it.
